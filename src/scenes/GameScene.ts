@@ -1,123 +1,162 @@
 import Phaser from "phaser";
-import { SceneKeys } from "@/config/AssetKeys";
-import { GAME_HEIGHT } from "@/config/GameConfig";
+import { SceneKeys, TextureKeys } from "@/config/AssetKeys";
+import { GAME_WIDTH, GAME_HEIGHT } from "@/config/GameConfig";
+import { getLevel } from "@/config/levels";
 import { Player } from "@/entities/Player";
 import { InputManager } from "@/systems/InputManager";
-import { createPlaceholderTextures } from "@/systems/PlaceholderTextures";
+import { LevelLoader, type LoadedLevel } from "@/systems/LevelLoader";
+import { ParallaxBackground } from "@/systems/ParallaxBackground";
+import { CameraManager } from "@/systems/CameraManager";
 
-/** Milestone-2 test arena dimensions (wider than the screen to test scrolling). */
-const WORLD_WIDTH = 2400;
-const WORLD_HEIGHT = GAME_HEIGHT;
+/** Render depths so gameplay sorts correctly above the parallax background. */
+const Depth = {
+  terrain: 0,
+  beacon: 5,
+  player: 10,
+  ui: 100,
+} as const;
 
 /**
  * GameScene: core gameplay.
  *
- * Milestone 2 builds a placeholder test arena (rectangles, no art) to tune and
- * verify the player's movement feel: platforms at varying heights, gaps, walls,
- * and a high ledge to exercise coyote-time, jump-buffering and variable jump
- * height. A live debug overlay shows velocity and timer state.
+ * Milestone 3 loads a real Tiled level via LevelLoader, renders the terrain
+ * with the generated tileset, sets up a deadzone follow-camera and a multi-layer
+ * parallax background, and spawns the player + goal beacon from the object layer.
  */
 export class GameScene extends Phaser.Scene {
   private player!: Player;
-  private input2!: InputManager;
-  private platforms!: Phaser.Physics.Arcade.StaticGroup;
+  private inputManager!: InputManager;
+  private level!: LoadedLevel;
+  private parallax!: ParallaxBackground;
+  private cameraManager!: CameraManager;
+
   private debugText!: Phaser.GameObjects.Text;
-  private spawnPoint = new Phaser.Math.Vector2(80, 200);
+  private levelComplete = false;
 
   constructor() {
     super(SceneKeys.Game);
   }
 
   create(): void {
-    createPlaceholderTextures(this);
+    this.levelComplete = false;
 
-    this.physics.world.setBounds(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
-    this.cameras.main.setBounds(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
-    this.cameras.main.setBackgroundColor("#1a1c2c");
+    // --- Build the level from Tiled JSON ---
+    this.level = new LevelLoader().load(this, getLevel(0)!);
+    this.level.terrain.setDepth(Depth.terrain);
 
-    this.buildTestArena();
+    // World bounds match the level; the bottom is open so pits = a fall to death.
+    this.physics.world.setBounds(0, 0, this.level.widthPx, this.level.heightPx);
+    this.physics.world.setBoundsCollision(true, true, true, false);
 
-    // Player + input.
-    this.input2 = new InputManager(this);
-    this.player = new Player(this, this.spawnPoint.x, this.spawnPoint.y);
-    this.physics.add.collider(this.player, this.platforms);
+    // --- Background (drawn behind everything) ---
+    this.parallax = new ParallaxBackground(this);
 
-    // Basic camera follow (deadzone + parallax refined in Milestone 3).
-    this.cameras.main.startFollow(this.player, true, 0.12, 0.12);
+    // --- Player ---
+    this.inputManager = new InputManager(this);
+    this.player = new Player(
+      this,
+      this.level.playerSpawn.x,
+      this.level.playerSpawn.y
+    );
+    this.player.setDepth(Depth.player);
+    this.physics.add.collider(this.player, this.level.terrain);
+
+    // --- Entities from the object layer (beacon for now; more later) ---
+    this.spawnLevelObjects();
+
+    // --- Camera ---
+    this.cameraManager = new CameraManager(
+      this,
+      this.player,
+      this.level.widthPx,
+      this.level.heightPx
+    );
 
     this.buildHud();
-
-    // Quick reset for testing (R).
-    this.input.keyboard?.on("keydown-R", () => this.respawn());
+    this.input.keyboard?.on("keydown-R", () => this.scene.restart());
   }
 
   override update(_time: number, delta: number): void {
-    this.input2.update();
-    this.player.updatePlayer(delta, this.input2.getState());
+    this.inputManager.update();
 
-    // Fell out of the world -> respawn (real death handling arrives later).
-    if (this.player.y > WORLD_HEIGHT + 64) {
-      this.respawn();
+    if (!this.levelComplete) {
+      this.player.updatePlayer(delta, this.inputManager.getState());
+
+      // Fell into a pit / below the world -> restart the level (death handling
+      // is fleshed out with lives in Milestone 6).
+      if (this.player.y > this.level.heightPx + 80) {
+        this.scene.restart();
+        return;
+      }
     }
 
+    this.parallax.update(this.cameraManager.scrollX);
     this.updateHud();
   }
 
-  /** Builds platforms, walls, gaps and a high ledge from placeholder rectangles. */
-  private buildTestArena(): void {
-    this.platforms = this.physics.add.staticGroup();
-
-    const ground = (x: number, w: number) =>
-      this.addBox(x, WORLD_HEIGHT - 16, w, 32, 0x5c5346);
-
-    // Ground segments with two gaps (test running off ledges / jumping pits).
-    ground(0, 520); // start area
-    ground(700, 540); // after first gap
-    ground(1400, 600); // after second gap
-    ground(2120, 280); // end area
-
-    // Floating platforms at varying heights (test jump arcs & buffering).
-    this.addBox(360, 250, 110, 22, 0x8a7f6b);
-    this.addBox(560, 195, 110, 22, 0x8a7f6b);
-    this.addBox(900, 230, 130, 22, 0x8a7f6b);
-    this.addBox(1180, 180, 110, 22, 0x8a7f6b);
-
-    // A stair/step + wall to test turning at walls and short hops.
-    this.addBox(1500, WORLD_HEIGHT - 48, 64, 32, 0x6b6253);
-    this.addBox(1564, WORLD_HEIGHT - 80, 64, 32, 0x6b6253);
-    this.addBox(1628, WORLD_HEIGHT - 112, 24, 64, 0x6b6253);
-
-    // A tall ledge to drop off of — exercises coyote time.
-    this.addBox(1950, 150, 150, 22, 0x8a7f6b);
-    this.addBox(2025, 240, 24, 180, 0x6b6253);
+  /** Instantiate non-player objects defined in the level's object layer. */
+  private spawnLevelObjects(): void {
+    for (const obj of this.level.spawns) {
+      switch (obj.type) {
+        case "beacon":
+          this.createBeacon(obj.x, obj.y);
+          break;
+        // Future milestones: "coin", "plodder", "snapvine", "luckyblock"…
+        default:
+          break;
+      }
+    }
   }
 
-  /** Adds a static, collidable rectangle and returns it. */
-  private addBox(
-    x: number,
-    y: number,
-    w: number,
-    h: number,
-    color: number
-  ): Phaser.GameObjects.Rectangle {
-    const rect = this.add.rectangle(x + w / 2, y + h / 2, w, h, color);
-    rect.setStrokeStyle(2, 0x000000, 0.25);
-    this.physics.add.existing(rect, true);
-    this.platforms.add(rect);
-    return rect;
+  /** Goal beacon: reaching it completes the level (temporary banner for now). */
+  private createBeacon(x: number, y: number): void {
+    const beacon = this.physics.add
+      .staticSprite(x, y, TextureKeys.Beacon)
+      .setOrigin(0.5, 1)
+      .setDepth(Depth.beacon);
+    // Re-sync the static body after the origin change so it aligns with the art.
+    beacon.body.updateFromGameObject();
+
+    this.physics.add.overlap(this.player, beacon, () => this.onReachBeacon());
+  }
+
+  private onReachBeacon(): void {
+    if (this.levelComplete) return;
+    this.levelComplete = true;
+    this.player.setVelocity(0, 0);
+
+    // Temporary completion banner; replaced by LevelCompleteScene in Milestone 6.
+    this.add
+      .text(GAME_WIDTH / 2, GAME_HEIGHT / 2, "LEVEL COMPLETE!", {
+        fontFamily: "monospace",
+        fontSize: "28px",
+        color: "#9be35a",
+        fontStyle: "bold",
+        backgroundColor: "#000000aa",
+        padding: { x: 14, y: 10 },
+      })
+      .setOrigin(0.5)
+      .setScrollFactor(0)
+      .setDepth(Depth.ui);
   }
 
   private buildHud(): void {
-    const help =
-      "Move: ←→ / A D   Jump: Space / W / ↑ (hold = higher)   Sprint: Shift   Reset: R";
     this.add
-      .text(8, GAME_HEIGHT - 8, help, {
-        fontFamily: "monospace",
-        fontSize: "11px",
-        color: "#c0c0d0",
-      })
+      .text(
+        8,
+        GAME_HEIGHT - 8,
+        "Move: ←→/AD   Jump: Space/W/↑ (hold=higher)   Sprint: Shift   Restart: R",
+        {
+          fontFamily: "monospace",
+          fontSize: "11px",
+          color: "#ffffff",
+          backgroundColor: "#00000055",
+          padding: { x: 4, y: 2 },
+        }
+      )
       .setOrigin(0, 1)
-      .setScrollFactor(0);
+      .setScrollFactor(0)
+      .setDepth(Depth.ui);
 
     this.debugText = this.add
       .text(8, 8, "", {
@@ -127,25 +166,15 @@ export class GameScene extends Phaser.Scene {
         backgroundColor: "#00000066",
         padding: { x: 6, y: 4 },
       })
-      .setScrollFactor(0);
+      .setScrollFactor(0)
+      .setDepth(Depth.ui);
   }
 
   private updateHud(): void {
-    const d = this.player.debugInfo;
     this.debugText.setText(
-      [
-        `FPS:    ${Math.round(this.game.loop.actualFps)}`,
-        `vx:     ${d.vx.toFixed(0)}`,
-        `vy:     ${d.vy.toFixed(0)}`,
-        `ground: ${d.grounded}`,
-        `coyote: ${d.coyote.toFixed(0)}ms`,
-        `buffer: ${d.buffer.toFixed(0)}ms`,
-      ].join("\n")
+      `FPS: ${Math.round(this.game.loop.actualFps)}   x:${Math.round(
+        this.player.x
+      )} y:${Math.round(this.player.y)}`
     );
-  }
-
-  private respawn(): void {
-    this.player.setPosition(this.spawnPoint.x, this.spawnPoint.y);
-    this.player.setVelocity(0, 0);
   }
 }

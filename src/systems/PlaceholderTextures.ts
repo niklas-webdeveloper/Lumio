@@ -1,15 +1,15 @@
 import Phaser from "phaser";
 
 /**
- * Generates simple solid-color textures at runtime so gameplay can be built
- * and tuned before real pixel-art exists. Every key created here is later
- * replaced by a loaded sprite/atlas; nothing depends on these visuals.
+ * Generates simple solid-color player textures at runtime so movement could be
+ * built and tuned before character art exists. These are replaced by a proper
+ * animated sprite in the art pass; nothing depends on these visuals.
+ *
+ * (Terrain is drawn by TextureFactory; level geometry uses the tilemap.)
  */
 export const PlaceholderKeys = {
   PlayerSmall: "ph_player_small",
   PlayerBig: "ph_player_big",
-  Platform: "ph_platform",
-  Ground: "ph_ground",
 } as const;
 
 /** Create a flat-colored rectangle texture with a subtle border for contrast. */
@@ -31,10 +31,8 @@ function makeRect(
   g.destroy();
 }
 
-/** Register all placeholder textures for the given scene. */
+/** Register placeholder player textures for the given scene. */
 export function createPlaceholderTextures(scene: Phaser.Scene): void {
   makeRect(scene, PlaceholderKeys.PlayerSmall, 22, 30, 0x6ad7ff);
   makeRect(scene, PlaceholderKeys.PlayerBig, 26, 46, 0x4ab3e0);
-  makeRect(scene, PlaceholderKeys.Platform, 96, 24, 0x8a7f6b);
-  makeRect(scene, PlaceholderKeys.Ground, 32, 32, 0x5c5346);
 }
