@@ -5,7 +5,11 @@ import { TileGid } from "@/config/Tiles";
 import { getLevel } from "@/config/levels";
 import { Player } from "@/entities/Player";
 import { Coin } from "@/entities/Coin";
+import { Pipe } from "@/entities/Pipe";
 import { Growcap } from "@/entities/powerups/Growcap";
+import { Enemy } from "@/entities/enemies/Enemy";
+import { Plodder } from "@/entities/enemies/Plodder";
+import { Snapvine } from "@/entities/enemies/Snapvine";
 import { LuckyBlock } from "@/entities/blocks/LuckyBlock";
 import { BrickBlock } from "@/entities/blocks/BrickBlock";
 import {
@@ -24,7 +28,10 @@ const Depth = {
   terrain: 0,
   block: 1,
   item: 2,
+  plant: 3, // behind the pipe, so a retracted Snapvine is hidden
   beacon: 5,
+  pipe: 6,
+  enemy: 8, // in front of pipes
   player: 10,
   ui: 100,
 } as const;
@@ -49,6 +56,9 @@ export class GameScene extends Phaser.Scene {
   private coins!: Phaser.GameObjects.Group;
   private blocks!: Phaser.GameObjects.Group;
   private growcaps!: Phaser.GameObjects.Group;
+  private enemies!: Phaser.GameObjects.Group; // all enemies (player overlap)
+  private plodders!: Phaser.GameObjects.Group; // ground enemies (terrain collision)
+  private pipes!: Phaser.GameObjects.Group;
 
   private coinCount = 0;
   private failed = false;
@@ -76,6 +86,9 @@ export class GameScene extends Phaser.Scene {
     this.coins = this.add.group();
     this.blocks = this.add.group();
     this.growcaps = this.add.group();
+    this.enemies = this.add.group();
+    this.plodders = this.add.group();
+    this.pipes = this.add.group();
 
     // --- Player ---
     this.inputManager = new InputManager(this);
@@ -137,6 +150,24 @@ export class GameScene extends Phaser.Scene {
           this.blocks.add(brick);
           break;
         }
+        case "plodder": {
+          const plodder = new Plodder(this, obj.x, obj.y, this.level.terrain);
+          plodder.setDepth(Depth.enemy);
+          this.enemies.add(plodder);
+          this.plodders.add(plodder);
+          break;
+        }
+        case "pipe": {
+          const pipe = new Pipe(this, obj.x, obj.y);
+          pipe.setDepth(Depth.pipe);
+          this.pipes.add(pipe);
+          if (obj.properties.plant === true) {
+            const plant = new Snapvine(this, pipe.mouthX, pipe.mouthY);
+            plant.setDepth(Depth.plant);
+            this.enemies.add(plant);
+          }
+          break;
+        }
         case "beacon":
           this.createBeacon(obj.x, obj.y);
           break;
@@ -172,6 +203,15 @@ export class GameScene extends Phaser.Scene {
     );
     this.physics.add.collider(this.growcaps, this.blocks);
 
+    // Pipes are solid for the player, ground enemies and roaming power-ups.
+    this.physics.add.collider(this.player, this.pipes);
+    this.physics.add.collider(this.growcaps, this.pipes);
+
+    // Ground enemies collide with the world; the Snapvine stays out of it.
+    this.physics.add.collider(this.plodders, this.level.terrain);
+    this.physics.add.collider(this.plodders, this.blocks);
+    this.physics.add.collider(this.plodders, this.pipes);
+
     // Pickups.
     this.physics.add.overlap(this.player, this.coins, (_p, c) => {
       if ((c as Coin).collect()) this.addCoins(1);
@@ -179,6 +219,28 @@ export class GameScene extends Phaser.Scene {
     this.physics.add.overlap(this.player, this.growcaps, (_p, g) =>
       (g as Growcap).applyTo(this.player)
     );
+
+    // Enemies: stomp from above, otherwise take damage.
+    this.physics.add.overlap(this.player, this.enemies, (_p, e) =>
+      this.onPlayerHitEnemy(e as Enemy)
+    );
+  }
+
+  /** Decide between a stomp (player came down on top) and taking damage. */
+  private onPlayerHitEnemy(enemy: Enemy): void {
+    if (this.failed || this.levelComplete || !enemy.canDamage()) return;
+
+    const pb = this.player.body;
+    const eb = enemy.body;
+    const fromAbove = pb.velocity.y > 0 && pb.bottom <= eb.top + 8;
+
+    if (fromAbove && enemy.stompable) {
+      enemy.stomp();
+      this.player.bounce();
+      this.cameraManager.shake(); // small punch of feedback
+    } else {
+      this.damagePlayer();
+    }
   }
 
   /** Only a strike from underneath (player's head blocked) activates a block. */
@@ -321,6 +383,22 @@ export class GameScene extends Phaser.Scene {
             (c) => (c as Phaser.GameObjects.Sprite).texture.key === TextureKeys.Brick
           ).length,
       damage: () => this.damagePlayer(),
+      grow: () => this.player.grow(),
+      playerVy: () => this.player.body.velocity.y,
+      enemyCount: () => this.enemies.getLength(),
+      plodderCount: () => this.plodders.getLength(),
+      plodderList: () =>
+        this.plodders
+          .getChildren()
+          .map((p) => ({ x: (p as Plodder).x, y: (p as Plodder).y })),
+      hasSnapvine: () =>
+        this.enemies.getChildren().some((e) => (e as Enemy).stompable === false),
+      snapvineCanDamage: () =>
+        this.enemies
+          .getChildren()
+          .some(
+            (e) => (e as Enemy).stompable === false && (e as Enemy).canDamage()
+          ),
     };
   }
 }

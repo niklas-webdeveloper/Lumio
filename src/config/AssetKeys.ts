@@ -33,5 +33,9 @@ export const TextureKeys = {
   UsedBlock: "tex_used", // spent "?" block
   Coin: "tex_coin", // collectible coin
   Growcap: "tex_growcap", // grow power-up
+  // Enemies & obstacles
+  Plodder: "tex_plodder", // walking enemy
+  Snapvine: "tex_snapvine", // piranha-style plant
+  Pipe: "tex_pipe", // pipe obstacle / plant housing
 } as const;
 

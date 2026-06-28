@@ -11,7 +11,7 @@
  "version": "1.10",
  "type": "map",
  "nextlayerid": 3,
- "nextobjectid": 32,
+ "nextobjectid": 38,
  "layers": [
   {
    "id": 1,
@@ -2108,6 +2108,92 @@
      "height": 0,
      "visible": true,
      "rotation": 0
+    },
+    {
+     "id": 32,
+     "name": "plodder",
+     "type": "plodder",
+     "point": true,
+     "x": 592,
+     "y": 384,
+     "width": 0,
+     "height": 0,
+     "visible": true,
+     "rotation": 0
+    },
+    {
+     "id": 33,
+     "name": "plodder",
+     "type": "plodder",
+     "point": true,
+     "x": 1424,
+     "y": 384,
+     "width": 0,
+     "height": 0,
+     "visible": true,
+     "rotation": 0
+    },
+    {
+     "id": 34,
+     "name": "plodder",
+     "type": "plodder",
+     "point": true,
+     "x": 2512,
+     "y": 384,
+     "width": 0,
+     "height": 0,
+     "visible": true,
+     "rotation": 0
+    },
+    {
+     "id": 35,
+     "name": "plodder",
+     "type": "plodder",
+     "point": true,
+     "x": 688,
+     "y": 288,
+     "width": 0,
+     "height": 0,
+     "visible": true,
+     "rotation": 0
+    },
+    {
+     "id": 36,
+     "name": "pipe",
+     "type": "pipe",
+     "point": true,
+     "x": 1088,
+     "y": 384,
+     "width": 0,
+     "height": 0,
+     "visible": true,
+     "rotation": 0,
+     "properties": [
+      {
+       "name": "plant",
+       "type": "bool",
+       "value": false
+      }
+     ]
+    },
+    {
+     "id": 37,
+     "name": "pipe",
+     "type": "pipe",
+     "point": true,
+     "x": 2144,
+     "y": 384,
+     "width": 0,
+     "height": 0,
+     "visible": true,
+     "rotation": 0,
+     "properties": [
+      {
+       "name": "plant",
+       "type": "bool",
+       "value": true
+      }
+     ]
     }
    ]
   }

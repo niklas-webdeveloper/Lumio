@@ -279,6 +279,84 @@ function createGrowcap(scene: Phaser.Scene): void {
   g.destroy();
 }
 
+/** Plodder: a small, grumpy walking critter. */
+function createPlodder(scene: Phaser.Scene): void {
+  if (scene.textures.exists(TextureKeys.Plodder)) return;
+  const w = 28;
+  const h = 24;
+  const g = scene.make.graphics({ x: 0, y: 0 }, false);
+  // feet
+  px(g, 4, 20, 7, 4, 0x5a3617);
+  px(g, 17, 20, 7, 4, 0x5a3617);
+  // body
+  g.fillStyle(0xa9692f, 1);
+  g.fillEllipse(w / 2, 12, 26, 22);
+  g.fillStyle(0xc4854a, 1); // lighter top
+  g.fillEllipse(w / 2, 9, 22, 12);
+  // eyes
+  px(g, 8, 9, 5, 6, 0xffffff);
+  px(g, 16, 9, 5, 6, 0xffffff);
+  px(g, 10, 11, 2, 3, 0x21130a); // pupils
+  px(g, 18, 11, 2, 3, 0x21130a);
+  // angry brows
+  px(g, 7, 7, 6, 2, 0x3a2210);
+  px(g, 16, 7, 6, 2, 0x3a2210);
+  g.generateTexture(TextureKeys.Plodder, w, h);
+  g.destroy();
+}
+
+/** Snapvine: a biting plant head on a short stem (origin centered). */
+function createSnapvine(scene: Phaser.Scene): void {
+  if (scene.textures.exists(TextureKeys.Snapvine)) return;
+  const w = 26;
+  const h = 40;
+  const g = scene.make.graphics({ x: 0, y: 0 }, false);
+  // stem
+  px(g, 11, 22, 4, 18, 0x3aa34a);
+  px(g, 11, 22, 2, 18, 0x53c163); // stem highlight
+  // leaves
+  g.fillStyle(0x2f8a3d, 1);
+  g.fillTriangle(7, 26, 13, 22, 13, 30);
+  g.fillTriangle(19, 26, 13, 22, 13, 30);
+  // head bulb
+  g.fillStyle(0xe23b4e, 1);
+  g.fillEllipse(w / 2, 14, 24, 26);
+  g.fillStyle(0xff6178, 1); // highlight
+  g.fillEllipse(w / 2 - 2, 10, 12, 12);
+  // mouth
+  g.fillStyle(0x5c0f1c, 1);
+  g.fillEllipse(w / 2, 16, 14, 10);
+  // teeth (white triangles top & bottom)
+  g.fillStyle(0xffffff, 1);
+  for (let i = 0; i < 3; i++) {
+    const tx = 7 + i * 6;
+    g.fillTriangle(tx, 12, tx + 3, 16, tx + 6, 12); // upper
+    g.fillTriangle(tx, 20, tx + 3, 16, tx + 6, 20); // lower
+  }
+  g.generateTexture(TextureKeys.Snapvine, w, h);
+  g.destroy();
+}
+
+/** Pipe: a green obstacle with a hollow mouth the Snapvine emerges from. */
+function createPipe(scene: Phaser.Scene): void {
+  if (scene.textures.exists(TextureKeys.Pipe)) return;
+  const w = 64;
+  const h = 80;
+  const g = scene.make.graphics({ x: 0, y: 0 }, false);
+  // shaft (inset under the rim)
+  px(g, 4, 14, w - 8, h - 14, 0x3aa34a);
+  px(g, 6, 14, 8, h - 14, 0x6cd07a); // left highlight
+  px(g, w - 14, 14, 8, h - 14, 0x2a7d37); // right shadow
+  // rim (full width, slightly taller band)
+  px(g, 0, 0, w, 16, 0x2f8a3d);
+  px(g, 0, 0, w, 3, 0x6cd07a); // rim top sheen
+  px(g, 0, 13, w, 3, 0x215f29); // rim base shadow
+  // hollow mouth
+  px(g, 10, 3, w - 20, 11, 0x123a18);
+  g.generateTexture(TextureKeys.Pipe, w, h);
+  g.destroy();
+}
+
 /** Standalone 32px textures for interactive blocks (sprites, not tiles). */
 function createEntityBlocks(scene: Phaser.Scene): void {
   const gen = (
@@ -331,4 +409,7 @@ export function createWorldTextures(scene: Phaser.Scene): void {
   createCoin(scene);
   createGrowcap(scene);
   createEntityBlocks(scene);
+  createPlodder(scene);
+  createSnapvine(scene);
+  createPipe(scene);
 }
