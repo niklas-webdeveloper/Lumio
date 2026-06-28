@@ -11,5 +11,10 @@ import { GameScene } from "@/scenes/GameScene";
  */
 const config = createGameConfig([BootScene, PreloadScene, GameScene]);
 
-// eslint-disable-next-line no-new
-new Phaser.Game(config);
+const game = new Phaser.Game(config);
+
+// Expose the game instance during development for debugging / smoke tests.
+// Stripped from production builds via the import.meta.env.DEV guard.
+if (import.meta.env.DEV) {
+  (window as unknown as { game: Phaser.Game }).game = game;
+}
