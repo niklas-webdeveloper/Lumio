@@ -27,5 +27,11 @@ export const TextureKeys = {
   HillsFar: "tex_hills_far", // parallax: distant hills (tiled)
   HillsNear: "tex_hills_near", // parallax: closer hills (tiled)
   Beacon: "tex_beacon", // level-end goal marker
+  // Interactive entities (standalone sprite textures)
+  LuckyBlock: "tex_lucky", // "?" block (active)
+  Brick: "tex_brick", // breakable brick
+  UsedBlock: "tex_used", // spent "?" block
+  Coin: "tex_coin", // collectible coin
+  Growcap: "tex_growcap", // grow power-up
 } as const;
 

@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { Physics } from "@/config/PhysicsConfig";
+import { Physics, PlayerSize } from "@/config/PhysicsConfig";
 import type { InputState } from "@/systems/InputManager";
 import { PlaceholderKeys } from "@/systems/PlaceholderTextures";
 
@@ -9,6 +9,17 @@ function approach(current: number, target: number, maxDelta: number): number {
   if (current > target) return Math.max(current - maxDelta, target);
   return target;
 }
+
+/** Player power level. */
+export type PlayerSizeState = "small" | "big";
+
+/** Outcome of a damage event, so the scene can react (sfx, lives, …). */
+export type DamageResult = "invulnerable" | "shrank" | "died";
+
+/** How long the player blinks and ignores damage after getting hit (ms). */
+const INVULN_DURATION_MS = 1500;
+/** Blink toggle interval during invulnerability (ms). */
+const BLINK_INTERVAL_MS = 90;
 
 /**
  * The player character (Lumio).
@@ -36,6 +47,15 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   /** True while in an upward jump arc we are allowed to cut short. */
   private isJumpRising = false;
 
+  /** Power level. Affects size, brick-breaking, and damage handling. */
+  private size: PlayerSizeState = "small";
+  /** Remaining invulnerability time (ms); >0 means hits are ignored. */
+  private invulnTimer = 0;
+  /** Accumulator driving the blink while invulnerable. */
+  private blinkAccumulator = 0;
+  /** Set once the player has died; control is suspended. */
+  private dead = false;
+
   constructor(scene: Phaser.Scene, x: number, y: number) {
     super(scene, x, y, PlaceholderKeys.PlayerSmall);
 
@@ -44,6 +64,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 
     this.setOrigin(0.5, 0.5);
     this.setCollideWorldBounds(true);
+    this.applyBodyForSize();
     // Terminal velocity cap (vertical). Horizontal is bounded by RUN_SPEED via
     // the manual integration below.
     this.body.setMaxVelocity(Physics.RUN_SPEED, Physics.MAX_FALL_SPEED);
@@ -60,6 +81,9 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
    * @param input   this frame's input snapshot
    */
   public updatePlayer(deltaMs: number, input: InputState): void {
+    // While dead, the death "pop" plays out under gravity with no control.
+    if (this.dead) return;
+
     const dt = deltaMs / 1000; // seconds for accel/velocity math
     const grounded = this.onGround;
 
@@ -67,6 +91,22 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.updateTimers(deltaMs, grounded, input);
     this.updateJump(input);
     this.updateGravity();
+    this.updateInvulnerability(deltaMs);
+  }
+
+  /** Count down invulnerability and blink the sprite while it's active. */
+  private updateInvulnerability(deltaMs: number): void {
+    if (this.invulnTimer <= 0) return;
+    this.invulnTimer -= deltaMs;
+    this.blinkAccumulator += deltaMs;
+    if (this.blinkAccumulator >= BLINK_INTERVAL_MS) {
+      this.blinkAccumulator = 0;
+      this.setAlpha(this.alpha < 1 ? 1 : 0.3);
+    }
+    if (this.invulnTimer <= 0) {
+      this.invulnTimer = 0;
+      this.setAlpha(1);
+    }
   }
 
   /** Acceleration / friction horizontal movement with crisp turn-arounds. */
@@ -142,9 +182,99 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.setGravityY(g);
   }
 
+  // ----- Power state & damage -----
+
+  /** Resize the physics body to match the current size, keeping feet planted. */
+  private applyBodyForSize(): void {
+    const dim = this.size === "big" ? PlayerSize.BIG : PlayerSize.SMALL;
+    this.body.setSize(dim.width, dim.height, true);
+  }
+
+  /** Grow from small to big (Growcap power-up). No-op if already big. */
+  public grow(): void {
+    if (this.dead || this.size === "big") return;
+    const grew = PlayerSize.BIG.height - PlayerSize.SMALL.height;
+    this.size = "big";
+    this.setTexture(PlaceholderKeys.PlayerBig);
+    this.applyBodyForSize();
+    this.y -= grew; // shift up so the larger body doesn't clip into the floor
+    // A quick squash-and-stretch pop for feedback.
+    this.scene.tweens.add({
+      targets: this,
+      scaleX: { from: 1.25, to: 1 },
+      scaleY: { from: 0.8, to: 1 },
+      duration: 180,
+      ease: "Back.out",
+    });
+  }
+
+  /**
+   * Apply damage from a hazard/enemy. Big -> small (with invulnerability);
+   * small -> death. Ignored while invulnerable or dead.
+   */
+  public takeDamage(): DamageResult {
+    if (this.dead) return "died";
+    if (this.invulnTimer > 0) return "invulnerable";
+
+    if (this.size === "big") {
+      const shrank = PlayerSize.BIG.height - PlayerSize.SMALL.height;
+      this.size = "small";
+      this.setTexture(PlaceholderKeys.PlayerSmall);
+      this.applyBodyForSize();
+      this.y += shrank;
+      this.startInvulnerability();
+      return "shrank";
+    }
+
+    this.die();
+    return "died";
+  }
+
+  private startInvulnerability(): void {
+    this.invulnTimer = INVULN_DURATION_MS;
+    this.blinkAccumulator = 0;
+    this.setAlpha(0.3);
+  }
+
+  /** Begin the death sequence: a small pop, collisions off, no control. */
+  public die(): void {
+    if (this.dead) return;
+    this.dead = true;
+    this.setAlpha(1);
+    this.body.setVelocity(0, -380); // hop up...
+    this.setGravityY(Physics.GRAVITY_Y);
+    this.body.checkCollision.none = true; // ...then fall through everything
+  }
+
+  /** Bounce the player upward (used after stomping an enemy in Milestone 5). */
+  public bounce(velocity = Physics.STOMP_BOUNCE_VELOCITY): void {
+    this.setVelocityY(velocity);
+    this.isJumpRising = false;
+  }
+
   /** Current facing direction (1 right, -1 left) — used by later animations. */
   public get facingDirection(): 1 | -1 {
     return this.facing;
+  }
+
+  /** Current power level. */
+  public get sizeState(): PlayerSizeState {
+    return this.size;
+  }
+
+  /** True when the player can break bricks and survive one hit. */
+  public get isBig(): boolean {
+    return this.size === "big";
+  }
+
+  /** True after death (scene uses this to trigger respawn / lose a life). */
+  public get isDead(): boolean {
+    return this.dead;
+  }
+
+  /** True while briefly invulnerable after taking damage. */
+  public get isInvulnerable(): boolean {
+    return this.invulnTimer > 0;
   }
 
   /** Whether the player is standing on ground this frame (public read). */

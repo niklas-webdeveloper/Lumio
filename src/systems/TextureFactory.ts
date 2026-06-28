@@ -234,6 +234,68 @@ function createHills(
   g.destroy();
 }
 
+/** A spinning gold coin (animated in-engine via a scaleX flip tween). */
+function createCoin(scene: Phaser.Scene): void {
+  if (scene.textures.exists(TextureKeys.Coin)) return;
+  const g = scene.make.graphics({ x: 0, y: 0 }, false);
+  const r = 10;
+  g.fillStyle(0xc8941f, 1); // outer rim
+  g.fillCircle(r, r, r);
+  g.fillStyle(0xf2c14e, 1); // face
+  g.fillCircle(r, r, r - 2);
+  g.fillStyle(0xffe08a, 1); // inner sheen
+  g.fillCircle(r, r, r - 5);
+  g.fillStyle(0xc8941f, 1); // engraved center bar
+  g.fillRect(r - 1, 4, 2, 12);
+  g.fillStyle(0xffffff, 0.8); // glint
+  g.fillCircle(r - 3, r - 3, 1.5);
+  g.generateTexture(TextureKeys.Coin, r * 2, r * 2);
+  g.destroy();
+}
+
+/** The Growcap power-up: a friendly capped sprite (original, mushroom-ish). */
+function createGrowcap(scene: Phaser.Scene): void {
+  if (scene.textures.exists(TextureKeys.Growcap)) return;
+  const w = 26;
+  const h = 24;
+  const g = scene.make.graphics({ x: 0, y: 0 }, false);
+  // stem / body
+  px(g, 6, 12, 14, 11, 0xf6e7c5);
+  px(g, 6, 12, 14, 2, 0xfff6e0); // top sheen of stem
+  // face
+  px(g, 9, 16, 2, 3, 0x3a2a18); // left eye
+  px(g, 15, 16, 2, 3, 0x3a2a18); // right eye
+  // cap (red dome)
+  g.fillStyle(0xe23b4e, 1);
+  g.fillEllipse(w / 2, 12, w, 20);
+  g.fillStyle(0xff5d73, 1); // cap highlight band
+  g.fillEllipse(w / 2, 9, w - 4, 12);
+  // cream spots
+  g.fillStyle(0xfff1d6, 1);
+  g.fillCircle(8, 9, 3);
+  g.fillCircle(18, 8, 2.5);
+  g.fillCircle(13, 5, 2);
+  g.generateTexture(TextureKeys.Growcap, w, h);
+  g.destroy();
+}
+
+/** Standalone 32px textures for interactive blocks (sprites, not tiles). */
+function createEntityBlocks(scene: Phaser.Scene): void {
+  const gen = (
+    key: string,
+    paint: (g: Phaser.GameObjects.Graphics, ox: number) => void
+  ) => {
+    if (scene.textures.exists(key)) return;
+    const g = scene.make.graphics({ x: 0, y: 0 }, false);
+    paint(g, 0);
+    g.generateTexture(key, TILE_SIZE, TILE_SIZE);
+    g.destroy();
+  };
+  gen(TextureKeys.LuckyBlock, paintLucky);
+  gen(TextureKeys.Brick, paintBrick);
+  gen(TextureKeys.UsedBlock, paintUsed);
+}
+
 /** Goal beacon: a pole with a pennant and a glowing top, drawn once. */
 function createBeacon(scene: Phaser.Scene): void {
   if (scene.textures.exists(TextureKeys.Beacon)) return;
@@ -266,4 +328,7 @@ export function createWorldTextures(scene: Phaser.Scene): void {
   createHills(scene, TextureKeys.HillsFar, 384, 200, 150, 50, 3, 0x9ec7a8, 0xb6d9bf);
   createHills(scene, TextureKeys.HillsNear, 384, 220, 200, 80, 2, 0x5fa05f, 0x7bc07b);
   createBeacon(scene);
+  createCoin(scene);
+  createGrowcap(scene);
+  createEntityBlocks(scene);
 }
