@@ -1,8 +1,7 @@
 import Phaser from "phaser";
 import { SceneKeys, TextureKeys } from "@/config/AssetKeys";
-import { GAME_WIDTH, GAME_HEIGHT } from "@/config/GameConfig";
 import { TileGid } from "@/config/Tiles";
-import { getLevel } from "@/config/levels";
+import { getLevel, LEVEL_COUNT } from "@/config/levels";
 import { Player } from "@/entities/Player";
 import { Coin } from "@/entities/Coin";
 import { Pipe } from "@/entities/Pipe";
@@ -22,6 +21,8 @@ import { InputManager } from "@/systems/InputManager";
 import { LevelLoader, type LoadedLevel } from "@/systems/LevelLoader";
 import { ParallaxBackground } from "@/systems/ParallaxBackground";
 import { CameraManager } from "@/systems/CameraManager";
+import { gameState, Progression } from "@/systems/GameState";
+import { saveState } from "@/systems/SaveState";
 
 /** Render depths so gameplay sorts correctly above the parallax background. */
 const Depth = {
@@ -33,18 +34,16 @@ const Depth = {
   pipe: 6,
   enemy: 8, // in front of pipes
   player: 10,
-  ui: 100,
 } as const;
 
-/** Coins needed for a bonus life (granted in Milestone 6 alongside the HUD). */
-const COINS_PER_LIFE = 100;
+/** Delay (ms) before resolving a death or a completed level. */
+const DEATH_DELAY = 900;
+const COMPLETE_DELAY = 700;
 
 /**
- * GameScene: core gameplay.
- *
- * Milestone 4 adds collectible coins, interactive blocks (Lucky/Brick), the
- * Growcap power-up, small↔big player states, and spike-hazard damage on top of
- * the Milestone 3 level/camera/parallax foundation.
+ * GameScene: core gameplay. Loads the level for the current gameState.levelIndex,
+ * runs the HUD (UIScene) in parallel, and owns the run-loop concerns: scoring,
+ * the countdown timer, lives/death, pausing, and level completion transitions.
  */
 export class GameScene extends Phaser.Scene {
   private player!: Player;
@@ -56,33 +55,34 @@ export class GameScene extends Phaser.Scene {
   private coins!: Phaser.GameObjects.Group;
   private blocks!: Phaser.GameObjects.Group;
   private growcaps!: Phaser.GameObjects.Group;
-  private enemies!: Phaser.GameObjects.Group; // all enemies (player overlap)
-  private plodders!: Phaser.GameObjects.Group; // ground enemies (terrain collision)
+  private enemies!: Phaser.GameObjects.Group;
+  private plodders!: Phaser.GameObjects.Group;
   private pipes!: Phaser.GameObjects.Group;
 
-  private coinCount = 0;
   private failed = false;
   private levelComplete = false;
-  private debugText!: Phaser.GameObjects.Text;
+  /** Guards one-time binding of Systems pause/resume events across restarts. */
+  private pauseEventsBound = false;
 
   constructor() {
     super(SceneKeys.Game);
   }
 
   create(): void {
-    this.coinCount = 0;
     this.failed = false;
     this.levelComplete = false;
 
+    // HUD overlay (launched once; survives level restarts).
+    if (!this.scene.isActive(SceneKeys.UI)) this.scene.launch(SceneKeys.UI);
+
     // --- Level geometry ---
-    this.level = new LevelLoader().load(this, getLevel(0)!);
+    this.level = new LevelLoader().load(this, getLevel(gameState.levelIndex)!);
     this.level.terrain.setDepth(Depth.terrain);
     this.physics.world.setBounds(0, 0, this.level.widthPx, this.level.heightPx);
     this.physics.world.setBoundsCollision(true, true, true, false); // open bottom
 
     this.parallax = new ParallaxBackground(this);
 
-    // --- Groups (collision containers; sprites self-add to the scene) ---
     this.coins = this.add.group();
     this.blocks = this.add.group();
     this.growcaps = this.add.group();
@@ -90,7 +90,6 @@ export class GameScene extends Phaser.Scene {
     this.plodders = this.add.group();
     this.pipes = this.add.group();
 
-    // --- Player ---
     this.inputManager = new InputManager(this);
     this.player = new Player(this, this.level.playerSpawn.x, this.level.playerSpawn.y);
     this.player.setDepth(Depth.player);
@@ -106,8 +105,8 @@ export class GameScene extends Phaser.Scene {
       this.level.heightPx
     );
 
-    this.buildHud();
-    this.input.keyboard?.on("keydown-R", () => this.scene.restart());
+    gameState.startLevelTimer();
+    this.setupPauseControls();
     this.exposeTestApi();
   }
 
@@ -116,14 +115,16 @@ export class GameScene extends Phaser.Scene {
 
     if (!this.failed && !this.levelComplete) {
       this.player.updatePlayer(delta, this.inputManager.getState());
-      // Death (hazard/enemy) or falling into a pit both fail the level.
-      if (this.player.isDead || this.player.y > this.level.heightPx + 80) {
-        this.failLevel();
+
+      const fellOut = this.player.y > this.level.heightPx + 80;
+      if (this.player.isDead || fellOut) {
+        this.handleDeath();
+      } else if (gameState.tickTime(delta)) {
+        this.handleDeath(); // time ran out
       }
     }
 
     this.parallax.update(this.cameraManager.scrollX);
-    this.updateHud();
   }
 
   // ----- Spawning -----
@@ -189,7 +190,6 @@ export class GameScene extends Phaser.Scene {
   // ----- Collisions & overlaps -----
 
   private setupCollisions(): void {
-    // Terrain: solid, with spike tiles dealing damage on contact.
     this.physics.add.collider(this.player, this.level.terrain, (_p, tile) => {
       if ((tile as Phaser.Tilemaps.Tile).index === TileGid.Spike) {
         this.damagePlayer();
@@ -197,36 +197,34 @@ export class GameScene extends Phaser.Scene {
     });
     this.physics.add.collider(this.growcaps, this.level.terrain);
 
-    // Blocks: solid; a hit from below triggers their behavior.
     this.physics.add.collider(this.player, this.blocks, (_p, b) =>
       this.onBlockCollide(b as Block)
     );
     this.physics.add.collider(this.growcaps, this.blocks);
 
-    // Pipes are solid for the player, ground enemies and roaming power-ups.
     this.physics.add.collider(this.player, this.pipes);
     this.physics.add.collider(this.growcaps, this.pipes);
-
-    // Ground enemies collide with the world; the Snapvine stays out of it.
     this.physics.add.collider(this.plodders, this.level.terrain);
     this.physics.add.collider(this.plodders, this.blocks);
     this.physics.add.collider(this.plodders, this.pipes);
 
-    // Pickups.
     this.physics.add.overlap(this.player, this.coins, (_p, c) => {
-      if ((c as Coin).collect()) this.addCoins(1);
+      if ((c as Coin).collect()) gameState.addCoin();
     });
     this.physics.add.overlap(this.player, this.growcaps, (_p, g) =>
       (g as Growcap).applyTo(this.player)
     );
-
-    // Enemies: stomp from above, otherwise take damage.
     this.physics.add.overlap(this.player, this.enemies, (_p, e) =>
       this.onPlayerHitEnemy(e as Enemy)
     );
   }
 
-  /** Decide between a stomp (player came down on top) and taking damage. */
+  private onBlockCollide(block: Block): void {
+    if (this.player.body.blocked.up && block.y < this.player.y) {
+      block.hitFromBelow(this.player);
+    }
+  }
+
   private onPlayerHitEnemy(enemy: Enemy): void {
     if (this.failed || this.levelComplete || !enemy.canDamage()) return;
 
@@ -237,38 +235,30 @@ export class GameScene extends Phaser.Scene {
     if (fromAbove && enemy.stompable) {
       enemy.stomp();
       this.player.bounce();
-      this.cameraManager.shake(); // small punch of feedback
+      gameState.addScore(Progression.STOMP_SCORE);
+      this.cameraManager.shake();
     } else {
       this.damagePlayer();
     }
   }
 
-  /** Only a strike from underneath (player's head blocked) activates a block. */
-  private onBlockCollide(block: Block): void {
-    if (this.player.body.blocked.up && block.y < this.player.y) {
-      block.hitFromBelow(this.player);
-    }
-  }
-
   private setupRewardEvents(): void {
-    // Re-bind cleanly across scene restarts (scene.events persists).
     this.events.off(BlockEvents.LuckyReward, this.onLuckyReward, this);
     this.events.on(BlockEvents.LuckyReward, this.onLuckyReward, this);
   }
 
   private onLuckyReward(payload: LuckyRewardPayload): void {
-    const popY = payload.y - 16; // emerge from the block's top edge
+    const popY = payload.y - 16;
     if (payload.reward === "growcap") {
       const cap = new Growcap(this, payload.x, popY);
       cap.setDepth(Depth.item);
       this.growcaps.add(cap);
     } else {
       this.spawnCoinPop(payload.x, popY);
-      this.addCoins(1);
+      gameState.addCoin();
     }
   }
 
-  /** A coin that bursts from a block: arcs up, fades, awards (count handled by caller). */
   private spawnCoinPop(x: number, y: number): void {
     const coin = this.add.image(x, y, TextureKeys.Coin).setDepth(Depth.item);
     this.tweens.add({
@@ -281,87 +271,81 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
-  // ----- Player state changes -----
+  // ----- Run-loop concerns -----
 
   private damagePlayer(): void {
     const result = this.player.takeDamage();
-    if (result === "died") this.failLevel();
+    if (result === "died") this.handleDeath();
   }
 
-  private addCoins(n: number): void {
-    this.coinCount += n;
-    // 100 coins -> bonus life is wired up with lives/HUD in Milestone 6.
-    if (this.coinCount >= COINS_PER_LIFE) this.coinCount -= COINS_PER_LIFE;
-  }
-
-  private failLevel(): void {
+  /** Falling/hazard/time death: lose a life, then respawn or end the game. */
+  private handleDeath(): void {
     if (this.failed) return;
     this.failed = true;
     if (!this.player.isDead) this.player.die();
-    this.time.delayedCall(900, () => this.scene.restart());
+
+    this.time.delayedCall(DEATH_DELAY, () => {
+      const gameOver = gameState.loseLife();
+      if (gameOver) {
+        saveState.recordScore(gameState.score);
+        this.scene.stop(SceneKeys.UI);
+        this.scene.start(SceneKeys.GameOver);
+      } else {
+        this.scene.restart();
+      }
+    });
   }
 
   private onReachBeacon(): void {
-    if (this.levelComplete) return;
+    if (this.levelComplete || this.failed) return;
     this.levelComplete = true;
     this.player.setVelocity(0, 0);
-    this.add
-      .text(GAME_WIDTH / 2, GAME_HEIGHT / 2, "LEVEL COMPLETE!", {
-        fontFamily: "monospace",
-        fontSize: "28px",
-        color: "#9be35a",
-        fontStyle: "bold",
-        backgroundColor: "#000000aa",
-        padding: { x: 14, y: 10 },
-      })
-      .setOrigin(0.5)
-      .setScrollFactor(0)
-      .setDepth(Depth.ui);
+
+    const bonus = gameState.awardTimeBonus();
+    const lastLevel = gameState.levelIndex >= LEVEL_COUNT - 1;
+    saveState.unlockLevel(Math.min(gameState.levelIndex + 1, LEVEL_COUNT - 1));
+    saveState.recordScore(gameState.score);
+
+    this.time.delayedCall(COMPLETE_DELAY, () => {
+      this.scene.stop(SceneKeys.UI);
+      this.scene.start(SceneKeys.LevelComplete, { bonus, lastLevel });
+    });
   }
 
-  // ----- HUD (temporary; replaced by UIScene in Milestone 6) -----
+  // ----- Pause -----
 
-  private buildHud(): void {
-    this.add
-      .text(
-        8,
-        GAME_HEIGHT - 8,
-        "Move ←→/AD  Jump Space/W/↑  Sprint Shift  Restart R",
-        {
-          fontFamily: "monospace",
-          fontSize: "11px",
-          color: "#ffffff",
-          backgroundColor: "#00000055",
-          padding: { x: 4, y: 2 },
-        }
-      )
-      .setOrigin(0, 1)
-      .setScrollFactor(0)
-      .setDepth(Depth.ui);
+  private setupPauseControls(): void {
+    const pause = () => {
+      if (this.failed || this.levelComplete) return;
+      this.scene.launch(SceneKeys.Pause);
+      this.scene.pause();
+    };
+    // Keyboard listeners are cleared on scene shutdown, so re-add every create.
+    this.input.keyboard?.on("keydown-P", pause);
+    this.input.keyboard?.on("keydown-ESC", pause);
 
-    this.debugText = this.add
-      .text(8, 8, "", {
-        fontFamily: "monospace",
-        fontSize: "12px",
-        color: "#ffe08a",
-        backgroundColor: "#00000066",
-        padding: { x: 6, y: 4 },
-      })
-      .setScrollFactor(0)
-      .setDepth(Depth.ui);
-  }
-
-  private updateHud(): void {
-    this.debugText.setText(
-      `FPS ${Math.round(this.game.loop.actualFps)}  Coins ${this.coinCount}  Size ${this.player.sizeState}`
-    );
+    // Disable this scene's keys while paused so the pause/resume keys don't
+    // double-fire across the two scenes. Systems events persist across restarts,
+    // so bind these only once; read the (recreated) keyboard plugin lazily.
+    if (!this.pauseEventsBound) {
+      this.pauseEventsBound = true;
+      this.events.on(Phaser.Scenes.Events.PAUSE, () => {
+        if (this.input.keyboard) this.input.keyboard.enabled = false;
+      });
+      this.events.on(Phaser.Scenes.Events.RESUME, () => {
+        if (this.input.keyboard) this.input.keyboard.enabled = true;
+      });
+    }
   }
 
   /** Dev-only inspection hooks for the headless smoke tests (stripped in prod). */
   private exposeTestApi(): void {
     if (!import.meta.env.DEV) return;
     (this as unknown as { __test?: unknown }).__test = {
-      getCoins: () => this.coinCount,
+      getCoins: () => gameState.coins,
+      getScore: () => gameState.score,
+      getLives: () => gameState.lives,
+      getTime: () => gameState.timeLeft,
       getSize: () => this.player.sizeState,
       isDead: () => this.player.isDead,
       isInvuln: () => this.player.isInvulnerable,

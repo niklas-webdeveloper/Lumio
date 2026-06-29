@@ -23,7 +23,7 @@ export class PreloadScene extends Phaser.Scene {
     // Generate all procedural art now so every later scene can use it by key.
     createWorldTextures(this);
     createPlaceholderTextures(this);
-    this.scene.start(SceneKeys.Game);
+    this.scene.start(SceneKeys.Menu);
   }
 
   /** Minimal, dependency-free loading bar drawn with the Graphics API. */
