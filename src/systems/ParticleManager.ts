@@ -1,0 +1,69 @@
+import Phaser from "phaser";
+import { TextureKeys } from "@/config/AssetKeys";
+
+/** Depth for all one-shot effects — above gameplay, below the HUD. */
+const FX_DEPTH = 50;
+
+/**
+ * Pre-built particle emitters for one-shot bursts (coin sparkle, brick shatter,
+ * stomp dust, power-up shimmer). Emitters are created once with emitting off and
+ * triggered via `explode`, which is cheap and avoids per-effect allocation.
+ */
+export class ParticleManager {
+  private readonly spark: Phaser.GameObjects.Particles.ParticleEmitter;
+  private readonly crumb: Phaser.GameObjects.Particles.ParticleEmitter;
+  private readonly puff: Phaser.GameObjects.Particles.ParticleEmitter;
+
+  constructor(scene: Phaser.Scene) {
+    this.spark = scene.add
+      .particles(0, 0, TextureKeys.Spark, {
+        speed: { min: 60, max: 170 },
+        scale: { start: 1.1, end: 0 },
+        lifespan: 450,
+        gravityY: 280,
+        tint: [0xffe08a, 0xffffff, 0xffc24e],
+        blendMode: Phaser.BlendModes.ADD,
+        emitting: false,
+      })
+      .setDepth(FX_DEPTH);
+
+    this.crumb = scene.add
+      .particles(0, 0, TextureKeys.Crumb, {
+        speed: { min: 90, max: 210 },
+        angle: { min: -115, max: -65 },
+        scale: { start: 1, end: 0.4 },
+        rotate: { start: 0, end: 360 },
+        lifespan: 650,
+        gravityY: 760,
+        emitting: false,
+      })
+      .setDepth(FX_DEPTH);
+
+    this.puff = scene.add
+      .particles(0, 0, TextureKeys.Puff, {
+        speed: { min: 20, max: 80 },
+        scale: { start: 0.9, end: 0 },
+        alpha: { start: 0.7, end: 0 },
+        lifespan: 360,
+        tint: 0xffffff,
+        emitting: false,
+      })
+      .setDepth(FX_DEPTH);
+  }
+
+  coinSparkle(x: number, y: number): void {
+    this.spark.explode(8, x, y);
+  }
+
+  powerupSparkle(x: number, y: number): void {
+    this.spark.explode(16, x, y);
+  }
+
+  brickShatter(x: number, y: number): void {
+    this.crumb.explode(12, x, y);
+  }
+
+  stompPuff(x: number, y: number): void {
+    this.puff.explode(10, x, y);
+  }
+}

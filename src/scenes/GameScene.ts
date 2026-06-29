@@ -15,14 +15,18 @@ import {
   Block,
   BlockEvents,
   type LuckyRewardPayload,
+  type BrickBreakPayload,
   type RewardKind,
 } from "@/entities/blocks/Block";
 import { InputManager } from "@/systems/InputManager";
 import { LevelLoader, type LoadedLevel } from "@/systems/LevelLoader";
 import { ParallaxBackground } from "@/systems/ParallaxBackground";
 import { CameraManager } from "@/systems/CameraManager";
+import { ParticleManager } from "@/systems/ParticleManager";
 import { gameState, Progression } from "@/systems/GameState";
 import { saveState } from "@/systems/SaveState";
+import { audioManager } from "@/systems/AudioManager";
+import { fadeIn, fadeOutThen } from "@/systems/transition";
 
 /** Render depths so gameplay sorts correctly above the parallax background. */
 const Depth = {
@@ -51,6 +55,7 @@ export class GameScene extends Phaser.Scene {
   private level!: LoadedLevel;
   private parallax!: ParallaxBackground;
   private cameraManager!: CameraManager;
+  private particles!: ParticleManager;
 
   private coins!: Phaser.GameObjects.Group;
   private blocks!: Phaser.GameObjects.Group;
@@ -82,6 +87,8 @@ export class GameScene extends Phaser.Scene {
     this.physics.world.setBoundsCollision(true, true, true, false); // open bottom
 
     this.parallax = new ParallaxBackground(this);
+    this.particles = new ParticleManager(this);
+    fadeIn(this);
 
     this.coins = this.add.group();
     this.blocks = this.add.group();
@@ -108,6 +115,11 @@ export class GameScene extends Phaser.Scene {
     gameState.startLevelTimer();
     this.setupPauseControls();
     this.exposeTestApi();
+
+    audioManager.startMusic();
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () =>
+      audioManager.stopMusic()
+    );
   }
 
   override update(_time: number, delta: number): void {
@@ -209,11 +221,15 @@ export class GameScene extends Phaser.Scene {
     this.physics.add.collider(this.plodders, this.pipes);
 
     this.physics.add.overlap(this.player, this.coins, (_p, c) => {
-      if ((c as Coin).collect()) gameState.addCoin();
+      const coin = c as Coin;
+      if (coin.collect()) this.collectCoin(coin.x, coin.y);
     });
-    this.physics.add.overlap(this.player, this.growcaps, (_p, g) =>
-      (g as Growcap).applyTo(this.player)
-    );
+    this.physics.add.overlap(this.player, this.growcaps, (_p, g) => {
+      const cap = g as Growcap;
+      this.particles.powerupSparkle(cap.x, cap.y);
+      audioManager.play("powerup");
+      cap.applyTo(this.player);
+    });
     this.physics.add.overlap(this.player, this.enemies, (_p, e) =>
       this.onPlayerHitEnemy(e as Enemy)
     );
@@ -236,7 +252,9 @@ export class GameScene extends Phaser.Scene {
       enemy.stomp();
       this.player.bounce();
       gameState.addScore(Progression.STOMP_SCORE);
+      this.particles.stompPuff(enemy.x, eb.bottom);
       this.cameraManager.shake();
+      audioManager.play("stomp");
     } else {
       this.damagePlayer();
     }
@@ -245,6 +263,8 @@ export class GameScene extends Phaser.Scene {
   private setupRewardEvents(): void {
     this.events.off(BlockEvents.LuckyReward, this.onLuckyReward, this);
     this.events.on(BlockEvents.LuckyReward, this.onLuckyReward, this);
+    this.events.off(BlockEvents.BrickBreak, this.onBrickBreak, this);
+    this.events.on(BlockEvents.BrickBreak, this.onBrickBreak, this);
   }
 
   private onLuckyReward(payload: LuckyRewardPayload): void {
@@ -255,8 +275,21 @@ export class GameScene extends Phaser.Scene {
       this.growcaps.add(cap);
     } else {
       this.spawnCoinPop(payload.x, popY);
-      gameState.addCoin();
+      this.collectCoin(payload.x, popY);
     }
+  }
+
+  /** Award a coin with sparkle + sound, voicing a fanfare on a bonus life. */
+  private collectCoin(x: number, y: number): void {
+    const { extraLife } = gameState.addCoin();
+    this.particles.coinSparkle(x, y);
+    audioManager.play(extraLife ? "extralife" : "coin");
+  }
+
+  private onBrickBreak(payload: BrickBreakPayload): void {
+    this.particles.brickShatter(payload.x, payload.y);
+    this.cameraManager.shake(90, 0.004);
+    audioManager.play("brick");
   }
 
   private spawnCoinPop(x: number, y: number): void {
@@ -275,6 +308,10 @@ export class GameScene extends Phaser.Scene {
 
   private damagePlayer(): void {
     const result = this.player.takeDamage();
+    if (result === "shrank") {
+      this.cameraManager.shake(120, 0.006);
+      audioManager.play("hurt");
+    }
     if (result === "died") this.handleDeath();
   }
 
@@ -283,15 +320,20 @@ export class GameScene extends Phaser.Scene {
     if (this.failed) return;
     this.failed = true;
     if (!this.player.isDead) this.player.die();
+    this.cameraManager.shake(250, 0.01);
+    audioManager.stopMusic();
+    audioManager.play("death");
 
     this.time.delayedCall(DEATH_DELAY, () => {
       const gameOver = gameState.loseLife();
       if (gameOver) {
         saveState.recordScore(gameState.score);
-        this.scene.stop(SceneKeys.UI);
-        this.scene.start(SceneKeys.GameOver);
+        fadeOutThen(this, () => {
+          this.scene.stop(SceneKeys.UI);
+          this.scene.start(SceneKeys.GameOver);
+        });
       } else {
-        this.scene.restart();
+        fadeOutThen(this, () => this.scene.restart());
       }
     });
   }
@@ -300,6 +342,8 @@ export class GameScene extends Phaser.Scene {
     if (this.levelComplete || this.failed) return;
     this.levelComplete = true;
     this.player.setVelocity(0, 0);
+    audioManager.stopMusic();
+    audioManager.play("complete");
 
     const bonus = gameState.awardTimeBonus();
     const lastLevel = gameState.levelIndex >= LEVEL_COUNT - 1;
@@ -307,8 +351,10 @@ export class GameScene extends Phaser.Scene {
     saveState.recordScore(gameState.score);
 
     this.time.delayedCall(COMPLETE_DELAY, () => {
-      this.scene.stop(SceneKeys.UI);
-      this.scene.start(SceneKeys.LevelComplete, { bonus, lastLevel });
+      fadeOutThen(this, () => {
+        this.scene.stop(SceneKeys.UI);
+        this.scene.start(SceneKeys.LevelComplete, { bonus, lastLevel });
+      });
     });
   }
 
@@ -323,6 +369,7 @@ export class GameScene extends Phaser.Scene {
     // Keyboard listeners are cleared on scene shutdown, so re-add every create.
     this.input.keyboard?.on("keydown-P", pause);
     this.input.keyboard?.on("keydown-ESC", pause);
+    this.input.keyboard?.on("keydown-M", () => audioManager.toggleMute());
 
     // Disable this scene's keys while paused so the pause/resume keys don't
     // double-fire across the two scenes. Systems events persist across restarts,
@@ -369,6 +416,8 @@ export class GameScene extends Phaser.Scene {
       damage: () => this.damagePlayer(),
       grow: () => this.player.grow(),
       playerVy: () => this.player.body.velocity.y,
+      animKey: () => this.player.anims.currentAnim?.key ?? "",
+      levelIndex: () => gameState.levelIndex,
       enemyCount: () => this.enemies.getLength(),
       plodderCount: () => this.plodders.getLength(),
       plodderList: () =>

@@ -4,6 +4,7 @@ import { GAME_WIDTH, GAME_HEIGHT } from "@/config/GameConfig";
 import { LEVELS } from "@/config/levels";
 import { gameState } from "@/systems/GameState";
 import { saveState } from "@/systems/SaveState";
+import { fadeIn, fadeOutThen } from "@/systems/transition";
 
 /**
  * Title screen. Starts a new game, or continues from the highest unlocked level
@@ -15,6 +16,7 @@ export class MenuScene extends Phaser.Scene {
   }
 
   create(): void {
+    fadeIn(this);
     this.add.image(0, 0, TextureKeys.Sky).setOrigin(0, 0);
     this.add
       .tileSprite(0, GAME_HEIGHT, GAME_WIDTH, 220, TextureKeys.HillsNear)
@@ -98,6 +100,6 @@ export class MenuScene extends Phaser.Scene {
 
   private begin(levelIndex: number): void {
     gameState.startNewGame(levelIndex);
-    this.scene.start(SceneKeys.Game);
+    fadeOutThen(this, () => this.scene.start(SceneKeys.Game));
   }
 }

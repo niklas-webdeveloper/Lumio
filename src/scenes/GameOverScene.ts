@@ -3,6 +3,7 @@ import { SceneKeys } from "@/config/AssetKeys";
 import { GAME_WIDTH, GAME_HEIGHT } from "@/config/GameConfig";
 import { gameState } from "@/systems/GameState";
 import { saveState } from "@/systems/SaveState";
+import { fadeIn, fadeOutThen } from "@/systems/transition";
 
 /** Shown when lives reach zero. Reports the final/high score; returns to menu. */
 export class GameOverScene extends Phaser.Scene {
@@ -11,6 +12,7 @@ export class GameOverScene extends Phaser.Scene {
   }
 
   create(): void {
+    fadeIn(this);
     const isRecord = saveState.recordScore(gameState.score);
 
     this.add
@@ -68,11 +70,8 @@ export class GameOverScene extends Phaser.Scene {
       repeat: -1,
     });
 
-    this.input.keyboard?.once("keydown-SPACE", () =>
-      this.scene.start(SceneKeys.Menu)
-    );
-    this.input.keyboard?.once("keydown-ENTER", () =>
-      this.scene.start(SceneKeys.Menu)
-    );
+    const toMenu = () => fadeOutThen(this, () => this.scene.start(SceneKeys.Menu));
+    this.input.keyboard?.once("keydown-SPACE", toMenu);
+    this.input.keyboard?.once("keydown-ENTER", toMenu);
   }
 }

@@ -1,4 +1,7 @@
 import level01 from "@/levels/level-01.json";
+import level02 from "@/levels/level-02.json";
+import level03 from "@/levels/level-03.json";
+import level04 from "@/levels/level-04.json";
 
 /**
  * Level manifest — the ordered list of levels the game plays through.
@@ -16,6 +19,9 @@ export interface LevelDef {
 
 export const LEVELS: LevelDef[] = [
   { key: "level-01", title: "Sunny Meadows", data: level01 },
+  { key: "level-02", title: "Mossy Hollow", data: level02 },
+  { key: "level-03", title: "Bramble Heights", data: level03 },
+  { key: "level-04", title: "Sky Citadel", data: level04 },
 ];
 
 /** Total number of levels. */

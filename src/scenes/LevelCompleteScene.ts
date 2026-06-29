@@ -2,6 +2,7 @@ import Phaser from "phaser";
 import { SceneKeys } from "@/config/AssetKeys";
 import { GAME_WIDTH, GAME_HEIGHT } from "@/config/GameConfig";
 import { gameState } from "@/systems/GameState";
+import { fadeIn, fadeOutThen } from "@/systems/transition";
 
 interface LevelCompleteData {
   bonus: number;
@@ -21,6 +22,7 @@ export class LevelCompleteScene extends Phaser.Scene {
   }
 
   create(): void {
+    fadeIn(this);
     this.add
       .rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0x0d1117, 0.78)
       .setOrigin(0, 0);
@@ -79,10 +81,10 @@ export class LevelCompleteScene extends Phaser.Scene {
 
   private advance(): void {
     if (this.payload.lastLevel) {
-      this.scene.start(SceneKeys.Menu);
+      fadeOutThen(this, () => this.scene.start(SceneKeys.Menu));
     } else {
       gameState.advanceLevel();
-      this.scene.start(SceneKeys.Game);
+      fadeOutThen(this, () => this.scene.start(SceneKeys.Game));
     }
   }
 }

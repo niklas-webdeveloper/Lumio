@@ -1,7 +1,8 @@
 import Phaser from "phaser";
 import { Physics, PlayerSize } from "@/config/PhysicsConfig";
+import { PlayerArt } from "@/config/AssetKeys";
 import type { InputState } from "@/systems/InputManager";
-import { PlaceholderKeys } from "@/systems/PlaceholderTextures";
+import { audioManager } from "@/systems/AudioManager";
 
 /** Move a value toward a target by at most `maxDelta` (framerate-independent). */
 function approach(current: number, target: number, maxDelta: number): number {
@@ -57,7 +58,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   private dead = false;
 
   constructor(scene: Phaser.Scene, x: number, y: number) {
-    super(scene, x, y, PlaceholderKeys.PlayerSmall);
+    super(scene, x, y, PlayerArt.tex.small.idle);
 
     scene.add.existing(this);
     scene.physics.add.existing(this);
@@ -92,6 +93,27 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.updateJump(input);
     this.updateGravity();
     this.updateInvulnerability(deltaMs);
+    this.updateAnimation(grounded);
+  }
+
+  /** Pick and play the right animation for the current motion + size. */
+  private updateAnimation(grounded: boolean): void {
+    const a = this.size === "big" ? PlayerArt.anim.big : PlayerArt.anim.small;
+    if (!grounded) {
+      this.anims.play(a.jump, true);
+      this.anims.timeScale = 1;
+    } else if (Math.abs(this.body.velocity.x) > 8) {
+      this.anims.play(a.walk, true);
+      // Feet shuffle faster the quicker we move (walk -> run).
+      this.anims.timeScale = Phaser.Math.Clamp(
+        Math.abs(this.body.velocity.x) / Physics.WALK_SPEED,
+        0.8,
+        1.8
+      );
+    } else {
+      this.anims.play(a.idle, true);
+      this.anims.timeScale = 1;
+    }
   }
 
   /** Count down invulnerability and blink the sprite while it's active. */
@@ -160,6 +182,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       this.jumpBufferTimer = 0;
       this.coyoteTimer = 0;
       this.isJumpRising = true;
+      audioManager.play("jump");
     }
 
     // Variable jump height: releasing while still rising cuts upward velocity.
@@ -195,7 +218,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     if (this.dead || this.size === "big") return;
     const grew = PlayerSize.BIG.height - PlayerSize.SMALL.height;
     this.size = "big";
-    this.setTexture(PlaceholderKeys.PlayerBig);
+    this.setTexture(PlayerArt.tex.big.idle);
     this.applyBodyForSize();
     this.y -= grew; // shift up so the larger body doesn't clip into the floor
     // A quick squash-and-stretch pop for feedback.
@@ -219,7 +242,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     if (this.size === "big") {
       const shrank = PlayerSize.BIG.height - PlayerSize.SMALL.height;
       this.size = "small";
-      this.setTexture(PlaceholderKeys.PlayerSmall);
+      this.setTexture(PlayerArt.tex.small.idle);
       this.applyBodyForSize();
       this.y += shrank;
       this.startInvulnerability();
@@ -241,6 +264,11 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     if (this.dead) return;
     this.dead = true;
     this.setAlpha(1);
+    this.anims.stop();
+    this.setTexture(
+      this.size === "big" ? PlayerArt.tex.big.jump : PlayerArt.tex.small.jump
+    );
+    this.setTint(0xff7a8a); // brief "hurt" flush
     this.body.setVelocity(0, -380); // hop up...
     this.setGravityY(Physics.GRAVITY_Y);
     this.body.checkCollision.none = true; // ...then fall through everything

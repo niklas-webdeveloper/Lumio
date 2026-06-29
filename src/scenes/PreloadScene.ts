@@ -1,8 +1,10 @@
 import Phaser from "phaser";
 import { SceneKeys } from "@/config/AssetKeys";
 import { GAME_WIDTH, GAME_HEIGHT } from "@/config/GameConfig";
-import { createWorldTextures } from "@/systems/TextureFactory";
-import { createPlaceholderTextures } from "@/systems/PlaceholderTextures";
+import {
+  createWorldTextures,
+  registerPlayerAnimations,
+} from "@/systems/TextureFactory";
 
 /**
  * PreloadScene: loads all game assets and shows a progress bar.
@@ -22,7 +24,7 @@ export class PreloadScene extends Phaser.Scene {
   create(): void {
     // Generate all procedural art now so every later scene can use it by key.
     createWorldTextures(this);
-    createPlaceholderTextures(this);
+    registerPlayerAnimations(this);
     this.scene.start(SceneKeys.Menu);
   }
 

@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { TextureKeys } from "@/config/AssetKeys";
+import { TextureKeys, PlayerArt } from "@/config/AssetKeys";
 import { TILE_COUNT } from "@/config/Tiles";
 import { GAME_WIDTH, GAME_HEIGHT, TILE_SIZE } from "@/config/GameConfig";
 
@@ -399,6 +399,123 @@ function createBeacon(scene: Phaser.Scene): void {
   g.destroy();
 }
 
+type LumioPose = "idle" | "walk0" | "walk1" | "jump";
+
+/** Draw one frame of Lumio (a cyan forest sprite) into a w×h cell. */
+function drawLumio(
+  g: Phaser.GameObjects.Graphics,
+  w: number,
+  h: number,
+  pose: LumioPose
+): void {
+  const body = 0x5fc7f0;
+  const outline = 0x2f93c4;
+  const belly = 0xd9f3ff;
+  const foot = 0x2f7fa8;
+
+  const bx = 2;
+  const by = 4;
+  const bw = w - 4;
+  const bh = h - 9;
+  const radius = Math.min(bw / 2, 11);
+
+  // little sprout on top
+  px(g, w / 2 - 1, 0, 2, 5, 0x3f8f2f);
+  g.fillStyle(0x6abe30, 1);
+  g.fillCircle(w / 2 + 2, 2, 3);
+
+  // body
+  g.fillStyle(body, 1);
+  g.fillRoundedRect(bx, by, bw, bh, radius);
+  g.lineStyle(2, outline, 1);
+  g.strokeRoundedRect(bx, by, bw, bh, radius);
+
+  // belly
+  g.fillStyle(belly, 1);
+  g.fillEllipse(w / 2, by + bh * 0.64, bw * 0.55, bh * 0.5);
+
+  // eyes (default face right; flipX handles facing left)
+  const eyeY = by + bh * 0.34;
+  g.fillStyle(0xffffff, 1);
+  g.fillCircle(w / 2 - 4, eyeY, 3.2);
+  g.fillCircle(w / 2 + 5, eyeY, 3.2);
+  g.fillStyle(0x16252e, 1);
+  g.fillCircle(w / 2 - 3, eyeY, 1.6);
+  g.fillCircle(w / 2 + 6, eyeY, 1.6);
+
+  // feet vary by pose
+  const fy = by + bh - 1;
+  g.fillStyle(foot, 1);
+  const footRect = (fx: number, fyy: number) =>
+    g.fillRoundedRect(fx, fyy, 6, 5, 2);
+  switch (pose) {
+    case "idle":
+      footRect(w / 2 - 7, fy);
+      footRect(w / 2 + 1, fy);
+      break;
+    case "walk0":
+      footRect(w / 2 - 9, fy);
+      footRect(w / 2 + 2, fy - 1);
+      break;
+    case "walk1":
+      footRect(w / 2 - 3, fy - 1);
+      footRect(w / 2 + 4, fy);
+      break;
+    case "jump":
+      footRect(w / 2 - 6, fy - 3);
+      footRect(w / 2 + 1, fy - 3);
+      break;
+  }
+}
+
+/** Generate Lumio's frame textures for both sizes. */
+function createPlayerFrames(scene: Phaser.Scene): void {
+  const gen = (key: string, w: number, h: number, pose: LumioPose) => {
+    if (scene.textures.exists(key)) return;
+    const g = scene.make.graphics({ x: 0, y: 0 }, false);
+    drawLumio(g, w, h, pose);
+    g.generateTexture(key, w, h);
+    g.destroy();
+  };
+  const S = PlayerArt.tex.small;
+  const B = PlayerArt.tex.big;
+  gen(S.idle, 24, 32, "idle");
+  gen(S.walk0, 24, 32, "walk0");
+  gen(S.walk1, 24, 32, "walk1");
+  gen(S.jump, 24, 32, "jump");
+  gen(B.idle, 30, 46, "idle");
+  gen(B.walk0, 30, 46, "walk0");
+  gen(B.walk1, 30, 46, "walk1");
+  gen(B.jump, 30, 46, "jump");
+}
+
+/** Small tintable particle bits (spark, crumb, dust puff). */
+function createParticleTextures(scene: Phaser.Scene): void {
+  if (!scene.textures.exists(TextureKeys.Spark)) {
+    const g = scene.make.graphics({ x: 0, y: 0 }, false);
+    g.fillStyle(0xffffff, 1);
+    g.fillCircle(3, 3, 3);
+    g.generateTexture(TextureKeys.Spark, 6, 6);
+    g.destroy();
+  }
+  if (!scene.textures.exists(TextureKeys.Puff)) {
+    const g = scene.make.graphics({ x: 0, y: 0 }, false);
+    g.fillStyle(0xffffff, 1);
+    g.fillCircle(4, 4, 4);
+    g.generateTexture(TextureKeys.Puff, 8, 8);
+    g.destroy();
+  }
+  if (!scene.textures.exists(TextureKeys.Crumb)) {
+    const g = scene.make.graphics({ x: 0, y: 0 }, false);
+    g.fillStyle(0xb5532e, 1);
+    g.fillRect(0, 0, 5, 5);
+    g.fillStyle(0xe0a878, 1);
+    g.fillRect(0, 0, 5, 2);
+    g.generateTexture(TextureKeys.Crumb, 5, 5);
+    g.destroy();
+  }
+}
+
 /** Generate every world texture. Safe to call once in PreloadScene. */
 export function createWorldTextures(scene: Phaser.Scene): void {
   createTileset(scene);
@@ -412,4 +529,28 @@ export function createWorldTextures(scene: Phaser.Scene): void {
   createPlodder(scene);
   createSnapvine(scene);
   createPipe(scene);
+  createPlayerFrames(scene);
+  createParticleTextures(scene);
+}
+
+/** Register Lumio's animations (global; call once in PreloadScene). */
+export function registerPlayerAnimations(scene: Phaser.Scene): void {
+  const def = (key: string, frames: string[], frameRate: number) => {
+    if (scene.anims.exists(key)) return;
+    scene.anims.create({
+      key,
+      frames: frames.map((f) => ({ key: f })),
+      frameRate,
+      repeat: -1,
+    });
+  };
+  const A = PlayerArt.anim;
+  const S = PlayerArt.tex.small;
+  const B = PlayerArt.tex.big;
+  def(A.small.idle, [S.idle], 1);
+  def(A.small.walk, [S.walk0, S.walk1], 8);
+  def(A.small.jump, [S.jump], 1);
+  def(A.big.idle, [B.idle], 1);
+  def(A.big.walk, [B.walk0, B.walk1], 8);
+  def(A.big.jump, [B.jump], 1);
 }

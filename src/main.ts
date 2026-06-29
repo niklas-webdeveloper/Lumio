@@ -8,6 +8,7 @@ import { UIScene } from "@/scenes/UIScene";
 import { PauseScene } from "@/scenes/PauseScene";
 import { LevelCompleteScene } from "@/scenes/LevelCompleteScene";
 import { GameOverScene } from "@/scenes/GameOverScene";
+import { audioManager } from "@/systems/AudioManager";
 
 /**
  * Entry point. Assembles the scene list and boots the Phaser game.
@@ -26,6 +27,11 @@ const config = createGameConfig([
 ]);
 
 const game = new Phaser.Game(config);
+
+// Browsers block audio until a user gesture — resume the synth on first input.
+const unlockAudio = () => audioManager.unlock();
+window.addEventListener("keydown", unlockAudio);
+window.addEventListener("pointerdown", unlockAudio);
 
 // Expose the game instance during development for debugging / smoke tests.
 // Stripped from production builds via the import.meta.env.DEV guard.
