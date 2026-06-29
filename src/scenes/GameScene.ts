@@ -265,6 +265,19 @@ export class GameScene extends Phaser.Scene {
     this.events.on(BlockEvents.LuckyReward, this.onLuckyReward, this);
     this.events.off(BlockEvents.BrickBreak, this.onBrickBreak, this);
     this.events.on(BlockEvents.BrickBreak, this.onBrickBreak, this);
+    // Player jump effects (emitted by Player so particles stay in the scene).
+    this.events.off("player-jump", this.onPlayerJump, this);
+    this.events.on("player-jump", this.onPlayerJump, this);
+    this.events.off("player-doublejump", this.onPlayerDoubleJump, this);
+    this.events.on("player-doublejump", this.onPlayerDoubleJump, this);
+  }
+
+  private onPlayerJump(x: number, y: number): void {
+    this.particles.jumpDust(x, y);
+  }
+
+  private onPlayerDoubleJump(x: number, y: number): void {
+    this.particles.doubleJumpBurst(x, y);
   }
 
   private onLuckyReward(payload: LuckyRewardPayload): void {
@@ -416,6 +429,9 @@ export class GameScene extends Phaser.Scene {
       damage: () => this.damagePlayer(),
       grow: () => this.player.grow(),
       playerVy: () => this.player.body.velocity.y,
+      playerPos: () => ({ x: this.player.x, y: this.player.y }),
+      playerAngle: () => this.player.angle,
+      jumpsUsed: () => this.player.jumpsUsedCount,
       animKey: () => this.player.anims.currentAnim?.key ?? "",
       levelIndex: () => gameState.levelIndex,
       enemyCount: () => this.enemies.getLength(),

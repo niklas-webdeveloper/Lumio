@@ -13,6 +13,7 @@ export class ParticleManager {
   private readonly spark: Phaser.GameObjects.Particles.ParticleEmitter;
   private readonly crumb: Phaser.GameObjects.Particles.ParticleEmitter;
   private readonly puff: Phaser.GameObjects.Particles.ParticleEmitter;
+  private readonly ring: Phaser.GameObjects.Particles.ParticleEmitter;
 
   constructor(scene: Phaser.Scene) {
     this.spark = scene.add
@@ -49,6 +50,19 @@ export class ParticleManager {
         emitting: false,
       })
       .setDepth(FX_DEPTH);
+
+    // Clean radial burst for the double jump (no gravity -> a tidy ring).
+    this.ring = scene.add
+      .particles(0, 0, TextureKeys.Spark, {
+        speed: { min: 130, max: 210 },
+        scale: { start: 1.1, end: 0 },
+        lifespan: 360,
+        gravityY: 0,
+        tint: [0x6ad7ff, 0xffffff],
+        blendMode: Phaser.BlendModes.ADD,
+        emitting: false,
+      })
+      .setDepth(FX_DEPTH);
   }
 
   coinSparkle(x: number, y: number): void {
@@ -65,5 +79,16 @@ export class ParticleManager {
 
   stompPuff(x: number, y: number): void {
     this.puff.explode(10, x, y);
+  }
+
+  /** Small kick of dust at the feet on a ground jump. */
+  jumpDust(x: number, y: number): void {
+    this.puff.explode(6, x, y);
+  }
+
+  /** Radial spark ring for the mid-air double jump. */
+  doubleJumpBurst(x: number, y: number): void {
+    this.ring.explode(16, x, y);
+    this.puff.explode(6, x, y);
   }
 }

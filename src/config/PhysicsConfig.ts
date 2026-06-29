@@ -42,6 +42,18 @@ export const Physics = {
   /** Initial upward velocity of a full jump (negative = up). */
   JUMP_VELOCITY: -560,
   /**
+   * Total jumps available from the ground (2 = a mid-air double jump).
+   * The second jump is an air jump usable once before landing.
+   */
+  MAX_JUMPS: 2,
+  /**
+   * Upward velocity of the mid-air double jump. Applied as a hard reset of
+   * vertical speed so it always feels crisp, even while falling fast.
+   */
+  DOUBLE_JUMP_VELOCITY: -520,
+  /** Duration of the double-jump flip spin (ms). */
+  DOUBLE_JUMP_SPIN_MS: 360,
+  /**
    * When the jump key is released while still rising, the upward velocity is
    * multiplied by this to cut the jump short (variable jump height).
    */

@@ -3,6 +3,7 @@ import { saveState } from "@/systems/SaveState";
 /** Named sound effects synthesized on the fly. */
 export type SfxName =
   | "jump"
+  | "doublejump"
   | "coin"
   | "stomp"
   | "powerup"
@@ -112,6 +113,11 @@ class AudioManager {
     switch (name) {
       case "jump":
         this.tone(330, 760, 0.16, "square", 0.2, t);
+        break;
+      case "doublejump":
+        // A brighter, airier "whoosh" up — distinct from the ground jump.
+        this.tone(520, 1180, 0.18, "triangle", 0.18, t);
+        this.tone(880, 1500, 0.12, "square", 0.1, t + 0.02);
         break;
       case "coin":
         this.seq([[988, 0.07], [1319, 0.12]], "square", 0.2);

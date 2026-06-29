@@ -399,73 +399,124 @@ function createBeacon(scene: Phaser.Scene): void {
   g.destroy();
 }
 
-type LumioPose = "idle" | "walk0" | "walk1" | "jump";
+type LumioPose = "idle" | "run0" | "run1" | "run2" | "run3" | "jump";
+type Pt = [number, number];
 
-/** Draw one frame of Lumio (a cyan forest sprite) into a w×h cell. */
+/** Per-pose limb keyframes, authored in a base 24×32 grid (cx = 12). */
+interface PoseFrame {
+  nKnee: Pt;
+  nFoot: Pt;
+  fKnee: Pt;
+  fFoot: Pt;
+  nHand: Pt;
+  fHand: Pt;
+}
+
+const POSES: Record<LumioPose, PoseFrame> = {
+  // standing
+  idle: { nKnee: [15, 26], nFoot: [15, 31], fKnee: [9, 26], fFoot: [9, 31], nHand: [18, 20], fHand: [6, 20] },
+  // 4-frame run cycle (near = right leg/arm; legs & arms swing in opposition)
+  run0: { nKnee: [16, 25], nFoot: [18, 30], fKnee: [8, 25], fFoot: [6, 31], nHand: [13, 19], fHand: [16, 18] },
+  run1: { nKnee: [15, 25], nFoot: [14, 31], fKnee: [11, 24], fFoot: [11, 28], nHand: [16, 20], fHand: [11, 19] },
+  run2: { nKnee: [10, 25], nFoot: [7, 31], fKnee: [14, 25], fFoot: [17, 31], nHand: [18, 19], fHand: [10, 18] },
+  run3: { nKnee: [12, 24], nFoot: [12, 28], fKnee: [10, 26], fFoot: [10, 31], nHand: [13, 20], fHand: [14, 19] },
+  // airborne: legs tucked, arms up
+  jump: { nKnee: [16, 24], nFoot: [17, 27], fKnee: [8, 24], fFoot: [7, 27], nHand: [19, 9], fHand: [6, 10] },
+};
+
+/**
+ * Draw one frame of Lumio — a small cyan creature with a head/body, two arms and
+ * two jointed legs that visibly stride. Authored in a 24×32 grid and scaled to
+ * the requested size, so small and big share one definition. Faces right by
+ * default (flipX handles left).
+ */
 function drawLumio(
   g: Phaser.GameObjects.Graphics,
   w: number,
   h: number,
   pose: LumioPose
 ): void {
-  const body = 0x5fc7f0;
-  const outline = 0x2f93c4;
-  const belly = 0xd9f3ff;
-  const foot = 0x2f7fa8;
+  const sx = w / 24;
+  const sy = h / 32;
+  const sAvg = (sx + sy) / 2;
 
-  const bx = 2;
-  const by = 4;
-  const bw = w - 4;
-  const bh = h - 9;
-  const radius = Math.min(bw / 2, 11);
+  const COL = {
+    body: 0x5fc7f0,
+    outline: 0x2f93c4,
+    belly: 0xd9f3ff,
+    limb: 0x4ab3e0,
+    limbFar: 0x3884ad,
+    foot: 0x2f7fa8,
+    footFar: 0x276a8e,
+  };
 
-  // little sprout on top
-  px(g, w / 2 - 1, 0, 2, 5, 0x3f8f2f);
-  g.fillStyle(0x6abe30, 1);
-  g.fillCircle(w / 2 + 2, 2, 3);
+  // A thick, round-capped segment between two base-grid points (a limb bone).
+  const seg = (p1: Pt, p2: Pt, thick: number, color: number) => {
+    const ax = p1[0] * sx;
+    const ay = p1[1] * sy;
+    const bx = p2[0] * sx;
+    const by = p2[1] * sy;
+    const th = thick * sAvg;
+    const dx = bx - ax;
+    const dy = by - ay;
+    const len = Math.hypot(dx, dy) || 1;
+    const nx = (-dy / len) * (th / 2);
+    const ny = (dx / len) * (th / 2);
+    g.fillStyle(color, 1);
+    g.fillTriangle(ax + nx, ay + ny, ax - nx, ay - ny, bx - nx, by - ny);
+    g.fillTriangle(ax + nx, ay + ny, bx - nx, by - ny, bx + nx, by + ny);
+    g.fillCircle(ax, ay, th / 2);
+    g.fillCircle(bx, by, th / 2);
+  };
+  const drawLeg = (hip: Pt, knee: Pt, foot: Pt, col: number, fcol: number) => {
+    seg(hip, knee, 4.6, col);
+    seg(knee, foot, 4.0, col);
+    g.fillStyle(fcol, 1);
+    g.fillEllipse(foot[0] * sx, foot[1] * sy, 6.5 * sx, 3.6 * sy);
+  };
+  const drawArm = (sh: Pt, hand: Pt, col: number) => {
+    seg(sh, hand, 3.2, col);
+    g.fillStyle(col, 1);
+    g.fillCircle(hand[0] * sx, hand[1] * sy, 1.9 * sAvg);
+  };
+  const rrect = (bx: number, by: number, bw: number, bh: number, r: number, c: number) => {
+    g.fillStyle(c, 1);
+    g.fillRoundedRect(bx * sx, by * sy, bw * sx, bh * sy, r * sAvg);
+  };
+  const circle = (cx: number, cy: number, r: number, c: number) => {
+    g.fillStyle(c, 1);
+    g.fillCircle(cx * sx, cy * sy, r * sAvg);
+  };
 
-  // body
-  g.fillStyle(body, 1);
-  g.fillRoundedRect(bx, by, bw, bh, radius);
-  g.lineStyle(2, outline, 1);
-  g.strokeRoundedRect(bx, by, bw, bh, radius);
+  const p = POSES[pose];
+  const nearHip: Pt = [14.5, 20];
+  const farHip: Pt = [9.5, 20];
+  const nearSh: Pt = [16.5, 13];
+  const farSh: Pt = [7.5, 13];
 
-  // belly
-  g.fillStyle(belly, 1);
-  g.fillEllipse(w / 2, by + bh * 0.64, bw * 0.55, bh * 0.5);
+  // Back (far) limbs first so they sit behind the body.
+  drawArm(farSh, p.fHand, COL.limbFar);
+  drawLeg(farHip, p.fKnee, p.fFoot, COL.limbFar, COL.footFar);
 
-  // eyes (default face right; flipX handles facing left)
-  const eyeY = by + bh * 0.34;
-  g.fillStyle(0xffffff, 1);
-  g.fillCircle(w / 2 - 4, eyeY, 3.2);
-  g.fillCircle(w / 2 + 5, eyeY, 3.2);
-  g.fillStyle(0x16252e, 1);
-  g.fillCircle(w / 2 - 3, eyeY, 1.6);
-  g.fillCircle(w / 2 + 6, eyeY, 1.6);
+  // Body (head + torso as one rounded shape) with a crisp outline.
+  rrect(4, 3, 16, 18, 7, COL.body);
+  g.lineStyle(2 * sAvg, COL.outline, 1);
+  g.strokeRoundedRect(4 * sx, 3 * sy, 16 * sx, 18 * sy, 7 * sAvg);
+  g.fillStyle(COL.belly, 1);
+  g.fillEllipse(12 * sx, 15 * sy, 9 * sx, 7 * sy);
 
-  // feet vary by pose
-  const fy = by + bh - 1;
-  g.fillStyle(foot, 1);
-  const footRect = (fx: number, fyy: number) =>
-    g.fillRoundedRect(fx, fyy, 6, 5, 2);
-  switch (pose) {
-    case "idle":
-      footRect(w / 2 - 7, fy);
-      footRect(w / 2 + 1, fy);
-      break;
-    case "walk0":
-      footRect(w / 2 - 9, fy);
-      footRect(w / 2 + 2, fy - 1);
-      break;
-    case "walk1":
-      footRect(w / 2 - 3, fy - 1);
-      footRect(w / 2 + 4, fy);
-      break;
-    case "jump":
-      footRect(w / 2 - 6, fy - 3);
-      footRect(w / 2 + 1, fy - 3);
-      break;
-  }
+  // Eyes (face right) + sprout.
+  circle(8.6, 9, 3, 0xffffff);
+  circle(15.4, 9, 3, 0xffffff);
+  circle(9.6, 9, 1.5, 0x16252e);
+  circle(16.4, 9, 1.5, 0x16252e);
+  g.fillStyle(0x3f8f2f, 1);
+  g.fillRect(11 * sx, 0, 2 * sx, 4 * sy);
+  circle(14, 1.5, 2.4, 0x6abe30);
+
+  // Front (near) limbs.
+  drawLeg(nearHip, p.nKnee, p.nFoot, COL.limb, COL.foot);
+  drawArm(nearSh, p.nHand, COL.limb);
 }
 
 /** Generate Lumio's frame textures for both sizes. */
@@ -477,16 +528,18 @@ function createPlayerFrames(scene: Phaser.Scene): void {
     g.generateTexture(key, w, h);
     g.destroy();
   };
-  const S = PlayerArt.tex.small;
-  const B = PlayerArt.tex.big;
-  gen(S.idle, 24, 32, "idle");
-  gen(S.walk0, 24, 32, "walk0");
-  gen(S.walk1, 24, 32, "walk1");
-  gen(S.jump, 24, 32, "jump");
-  gen(B.idle, 30, 46, "idle");
-  gen(B.walk0, 30, 46, "walk0");
-  gen(B.walk1, 30, 46, "walk1");
-  gen(B.jump, 30, 46, "jump");
+  const sizes = [
+    { t: PlayerArt.tex.small, w: 24, h: 32 },
+    { t: PlayerArt.tex.big, w: 30, h: 46 },
+  ];
+  for (const { t, w, h } of sizes) {
+    gen(t.idle, w, h, "idle");
+    gen(t.run0, w, h, "run0");
+    gen(t.run1, w, h, "run1");
+    gen(t.run2, w, h, "run2");
+    gen(t.run3, w, h, "run3");
+    gen(t.jump, w, h, "jump");
+  }
 }
 
 /** Small tintable particle bits (spark, crumb, dust puff). */
@@ -548,9 +601,9 @@ export function registerPlayerAnimations(scene: Phaser.Scene): void {
   const S = PlayerArt.tex.small;
   const B = PlayerArt.tex.big;
   def(A.small.idle, [S.idle], 1);
-  def(A.small.walk, [S.walk0, S.walk1], 8);
+  def(A.small.run, [S.run0, S.run1, S.run2, S.run3], 12);
   def(A.small.jump, [S.jump], 1);
   def(A.big.idle, [B.idle], 1);
-  def(A.big.walk, [B.walk0, B.walk1], 8);
+  def(A.big.run, [B.run0, B.run1, B.run2, B.run3], 12);
   def(A.big.jump, [B.jump], 1);
 }

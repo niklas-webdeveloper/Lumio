@@ -52,20 +52,24 @@ export const PlayerArt = {
   tex: {
     small: {
       idle: "lumio_s_idle",
-      walk0: "lumio_s_walk0",
-      walk1: "lumio_s_walk1",
+      run0: "lumio_s_run0",
+      run1: "lumio_s_run1",
+      run2: "lumio_s_run2",
+      run3: "lumio_s_run3",
       jump: "lumio_s_jump",
     },
     big: {
       idle: "lumio_b_idle",
-      walk0: "lumio_b_walk0",
-      walk1: "lumio_b_walk1",
+      run0: "lumio_b_run0",
+      run1: "lumio_b_run1",
+      run2: "lumio_b_run2",
+      run3: "lumio_b_run3",
       jump: "lumio_b_jump",
     },
   },
   anim: {
-    small: { idle: "lumio-s-idle", walk: "lumio-s-walk", jump: "lumio-s-jump" },
-    big: { idle: "lumio-b-idle", walk: "lumio-b-walk", jump: "lumio-b-jump" },
+    small: { idle: "lumio-s-idle", run: "lumio-s-run", jump: "lumio-s-jump" },
+    big: { idle: "lumio-b-idle", run: "lumio-b-run", jump: "lumio-b-jump" },
   },
 } as const;
 

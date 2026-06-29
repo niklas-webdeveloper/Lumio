@@ -34,6 +34,7 @@ Requires Node 18+ (developed on Node 24).
 | --- | --- |
 | Move | ← → / A D |
 | Jump | Space / W / ↑ (hold for a higher jump) |
+| Double jump | press Jump **again** in mid-air — with a flip & spark burst |
 | Sprint | Shift |
 | Pause | P / Esc |
 | Mute audio | M |
@@ -51,7 +52,8 @@ score are saved locally.
 ## Features
 
 - **Game feel**: acceleration/friction movement (walk + sprint), variable jump
-  height, coyote time, jump buffering, asymmetric gravity, terminal velocity.
+  height, **mid-air double jump** (with a flip animation), coyote time, jump
+  buffering, asymmetric gravity, terminal velocity.
 - **Camera**: deadzone follow + multi-layer parallax background.
 - **Content**: coins, Lucky/Brick blocks, the Growcap power-up, small/big player
   states with invulnerability, a walking enemy, a pipe plant, spikes, pits, and a

@@ -47,6 +47,10 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   private jumpBufferTimer = 0;
   /** True while in an upward jump arc we are allowed to cut short. */
   private isJumpRising = false;
+  /** Jumps performed since last touching the ground (0..MAX_JUMPS). */
+  private jumpsUsed = 0;
+  /** Active flip tween for the double jump (so we can cancel/reset it). */
+  private spinTween?: Phaser.Tweens.Tween;
 
   /** Power level. Affects size, brick-breaking, and damage handling. */
   private size: PlayerSizeState = "small";
@@ -103,11 +107,11 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       this.anims.play(a.jump, true);
       this.anims.timeScale = 1;
     } else if (Math.abs(this.body.velocity.x) > 8) {
-      this.anims.play(a.walk, true);
-      // Feet shuffle faster the quicker we move (walk -> run).
+      this.anims.play(a.run, true);
+      // Stride faster the quicker we move (walk -> sprint).
       this.anims.timeScale = Phaser.Math.Clamp(
         Math.abs(this.body.velocity.x) / Physics.WALK_SPEED,
-        0.8,
+        0.7,
         1.8
       );
     } else {
@@ -168,32 +172,80 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       ? Physics.JUMP_BUFFER_MS
       : Math.max(0, this.jumpBufferTimer - deltaMs);
 
-    // Landing clears the "rising" flag used for jump-cut.
     if (grounded && this.body.velocity.y >= 0) {
+      // Landing: reset jump count, clear the cut flag, undo any flip spin.
+      this.isJumpRising = false;
+      this.jumpsUsed = 0;
+      this.endSpin();
+    } else if (this.jumpsUsed === 0 && this.coyoteTimer === 0) {
+      // Walked off a ledge without jumping and coyote expired: forfeit the
+      // grounded jump so only the air (recovery) jump remains.
+      this.jumpsUsed = 1;
+    }
+  }
+
+  /** Execute ground / double jumps and apply variable-height jump-cut. */
+  private updateJump(input: InputState): void {
+    const groundJumpReady =
+      this.jumpsUsed === 0 && this.coyoteTimer > 0 && this.jumpBufferTimer > 0;
+
+    if (groundJumpReady) {
+      // First jump: from the ground or within the coyote window (buffered).
+      this.startJump(Physics.JUMP_VELOCITY);
+      this.jumpsUsed = 1;
+      this.jumpBufferTimer = 0;
+      this.coyoteTimer = 0;
+      audioManager.play("jump");
+      this.scene.events.emit("player-jump", this.x, this.body.bottom);
+    } else if (
+      input.jumpJustPressed &&
+      !this.onGround &&
+      this.jumpsUsed < Physics.MAX_JUMPS
+    ) {
+      // Mid-air double jump: a crisp upward reset + a flip + a burst.
+      this.startJump(Physics.DOUBLE_JUMP_VELOCITY);
+      this.jumpsUsed = Physics.MAX_JUMPS; // one air jump, regardless of prior state
+      this.startSpin();
+      audioManager.play("doublejump");
+      this.scene.events.emit("player-doublejump", this.x, this.y);
+    }
+
+    // Variable jump height: releasing while still rising cuts upward velocity.
+    if (input.jumpJustReleased && this.isJumpRising && this.body.velocity.y < 0) {
+      this.setVelocityY(this.body.velocity.y * Physics.JUMP_CUT_MULTIPLIER);
       this.isJumpRising = false;
     }
   }
 
-  /** Execute buffered jumps and apply variable-height jump-cut. */
-  private updateJump(input: InputState): void {
-    const canJump = this.coyoteTimer > 0;
-    if (this.jumpBufferTimer > 0 && canJump) {
-      this.setVelocityY(Physics.JUMP_VELOCITY);
-      this.jumpBufferTimer = 0;
-      this.coyoteTimer = 0;
-      this.isJumpRising = true;
-      audioManager.play("jump");
-    }
+  /** Apply an upward jump impulse and re-arm the variable-height cut. */
+  private startJump(velocity: number): void {
+    this.setVelocityY(velocity);
+    this.isJumpRising = true;
+  }
 
-    // Variable jump height: releasing while still rising cuts upward velocity.
-    if (
-      input.jumpJustReleased &&
-      this.isJumpRising &&
-      this.body.velocity.y < 0
-    ) {
-      this.setVelocityY(this.body.velocity.y * Physics.JUMP_CUT_MULTIPLIER);
-      this.isJumpRising = false;
+  /** Smooth 360° flip for the double jump (direction follows facing). */
+  private startSpin(): void {
+    this.endSpin();
+    this.setAngle(0);
+    this.spinTween = this.scene.tweens.add({
+      targets: this,
+      angle: 360 * this.facing,
+      duration: Physics.DOUBLE_JUMP_SPIN_MS,
+      ease: "Cubic.out",
+      onComplete: () => {
+        this.setAngle(0);
+        this.spinTween = undefined;
+      },
+    });
+  }
+
+  /** Cancel an in-progress flip and reset rotation (e.g. on landing). */
+  private endSpin(): void {
+    if (this.spinTween) {
+      this.spinTween.stop();
+      this.spinTween = undefined;
     }
+    this.setAngle(0);
   }
 
   /** Heavier gravity while falling than rising for a weighty feel. */
@@ -264,6 +316,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     if (this.dead) return;
     this.dead = true;
     this.setAlpha(1);
+    this.endSpin();
     this.anims.stop();
     this.setTexture(
       this.size === "big" ? PlayerArt.tex.big.jump : PlayerArt.tex.small.jump
@@ -303,6 +356,11 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   /** True while briefly invulnerable after taking damage. */
   public get isInvulnerable(): boolean {
     return this.invulnTimer > 0;
+  }
+
+  /** Jumps performed since last grounded (for tests/UI). */
+  public get jumpsUsedCount(): number {
+    return this.jumpsUsed;
   }
 
   /** Whether the player is standing on ground this frame (public read). */
