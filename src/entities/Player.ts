@@ -1,6 +1,6 @@
 import Phaser from "phaser";
-import { Physics, PlayerSize } from "@/config/PhysicsConfig";
-import { PlayerArt } from "@/config/AssetKeys";
+import { Physics } from "@/config/PhysicsConfig";
+import { HeroSheet, HeroAnim, HERO_FRAME } from "@/config/characterAssets";
 import type { InputState } from "@/systems/InputManager";
 import { audioManager } from "@/systems/AudioManager";
 
@@ -21,6 +21,25 @@ export type DamageResult = "invulnerable" | "shrank" | "died";
 const INVULN_DURATION_MS = 1500;
 /** Blink toggle interval during invulnerability (ms). */
 const BLINK_INTERVAL_MS = 90;
+
+/**
+ * Character display + hitbox tuning. The art is a 128px frame, scaled down; the
+ * physics body is a centered sub-box (in source px) covering the torso/legs with
+ * its bottom edge at the character's feet (~y120). Arcade scales the body with
+ * the sprite's scale, so growing = a larger scale with the same source box.
+ */
+const Hero = {
+  SMALL_SCALE: 0.5,
+  BIG_SCALE: 0.66,
+  BODY_W: 40,
+  BODY_H: 70,
+  BODY_OX: (HERO_FRAME - 40) / 2, // horizontally centered (=44)
+  BODY_OY: 120 - 70, // bottom edge at the feet line (=50)
+} as const;
+/** Feet distance below the frame centre, in source px (for feet-planted resizes). */
+const FEET_FROM_CENTER = Hero.BODY_OY + Hero.BODY_H - HERO_FRAME / 2; // 56
+/** Brief window after touchdown during which the landing animation plays. */
+const LAND_ANIM_MS = 170;
 
 /**
  * The player character (Lumio).
@@ -60,16 +79,21 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   private blinkAccumulator = 0;
   /** Set once the player has died; control is suspended. */
   private dead = false;
+  /** Ground state last frame (to detect touchdown for the landing anim). */
+  private wasGrounded = true;
+  /** Scene time until which the landing animation should hold. */
+  private landingUntil = 0;
 
   constructor(scene: Phaser.Scene, x: number, y: number) {
-    super(scene, x, y, PlayerArt.tex.small.idle);
+    super(scene, x, y, HeroSheet.idle.key, 0);
 
     scene.add.existing(this);
     scene.physics.add.existing(this);
 
     this.setOrigin(0.5, 0.5);
     this.setCollideWorldBounds(true);
-    this.applyBodyForSize();
+    this.setSizeState("small");
+    this.anims.play(HeroAnim.idle);
     // Terminal velocity cap (vertical). Horizontal is bounded by RUN_SPEED via
     // the manual integration below.
     this.body.setMaxVelocity(Physics.RUN_SPEED, Physics.MAX_FALL_SPEED);
@@ -97,25 +121,47 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.updateJump(input);
     this.updateGravity();
     this.updateInvulnerability(deltaMs);
-    this.updateAnimation(grounded);
+    this.updateAnimation(grounded, input);
   }
 
-  /** Pick and play the right animation for the current motion + size. */
-  private updateAnimation(grounded: boolean): void {
-    const a = this.size === "big" ? PlayerArt.anim.big : PlayerArt.anim.small;
+  /** Pick and play the right character animation for the current motion. */
+  private updateAnimation(grounded: boolean, input: InputState): void {
+    const vx = this.body.velocity.x;
+    const vy = this.body.velocity.y;
+    const now = this.scene.time.now;
+
+    // Touchdown -> play the one-shot landing animation briefly.
+    if (grounded && !this.wasGrounded) {
+      this.landingUntil = now + LAND_ANIM_MS;
+      this.anims.play(HeroAnim.land, true);
+    }
+    this.wasGrounded = grounded;
+
     if (!grounded) {
-      this.anims.play(a.jump, true);
+      if (vy < -20) {
+        // Rising: a running jump when carrying speed, else a normal jump.
+        const fast = Math.abs(vx) > Physics.WALK_SPEED * 0.6;
+        this.anims.play(fast ? HeroAnim.runjump : HeroAnim.jump, true);
+      } else {
+        this.anims.play(HeroAnim.fall, true);
+      }
       this.anims.timeScale = 1;
-    } else if (Math.abs(this.body.velocity.x) > 8) {
-      this.anims.play(a.run, true);
-      // Stride faster the quicker we move (walk -> sprint).
+      return;
+    }
+
+    // Hold the landing pose while it plays out and we're basically still.
+    if (now < this.landingUntil && Math.abs(vx) < 24) return;
+
+    if (Math.abs(vx) > 8) {
+      const sprinting = input.run && Math.abs(vx) > Physics.WALK_SPEED * 1.05;
+      this.anims.play(sprinting ? HeroAnim.dash : HeroAnim.run, true);
       this.anims.timeScale = Phaser.Math.Clamp(
-        Math.abs(this.body.velocity.x) / Physics.WALK_SPEED,
-        0.7,
-        1.8
+        Math.abs(vx) / Physics.WALK_SPEED,
+        0.8,
+        1.6
       );
     } else {
-      this.anims.play(a.idle, true);
+      this.anims.play(HeroAnim.idle, true);
       this.anims.timeScale = 1;
     }
   }
@@ -259,25 +305,26 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 
   // ----- Power state & damage -----
 
-  /** Resize the physics body to match the current size, keeping feet planted. */
-  private applyBodyForSize(): void {
-    const dim = this.size === "big" ? PlayerSize.BIG : PlayerSize.SMALL;
-    this.body.setSize(dim.width, dim.height, true);
+  /** Apply the scale + centered hit-box for the current power level. */
+  private setSizeState(size: PlayerSizeState): void {
+    this.size = size;
+    this.setScale(size === "big" ? Hero.BIG_SCALE : Hero.SMALL_SCALE);
+    // Source-pixel box; Arcade multiplies it by the sprite scale.
+    this.body.setSize(Hero.BODY_W, Hero.BODY_H, false);
+    this.body.setOffset(Hero.BODY_OX, Hero.BODY_OY);
   }
 
   /** Grow from small to big (Growcap power-up). No-op if already big. */
   public grow(): void {
     if (this.dead || this.size === "big") return;
-    const grew = PlayerSize.BIG.height - PlayerSize.SMALL.height;
-    this.size = "big";
-    this.setTexture(PlayerArt.tex.big.idle);
-    this.applyBodyForSize();
-    this.y -= grew; // shift up so the larger body doesn't clip into the floor
-    // A quick squash-and-stretch pop for feedback.
+    const dy = FEET_FROM_CENTER * (Hero.BIG_SCALE - Hero.SMALL_SCALE);
+    this.setSizeState("big");
+    this.y -= dy; // keep feet planted as the body grows downward
+    // A quick squash-and-stretch pop, settling at the big scale.
     this.scene.tweens.add({
       targets: this,
-      scaleX: { from: 1.25, to: 1 },
-      scaleY: { from: 0.8, to: 1 },
+      scaleX: { from: Hero.BIG_SCALE * 1.18, to: Hero.BIG_SCALE },
+      scaleY: { from: Hero.BIG_SCALE * 0.85, to: Hero.BIG_SCALE },
       duration: 180,
       ease: "Back.out",
     });
@@ -292,11 +339,9 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     if (this.invulnTimer > 0) return "invulnerable";
 
     if (this.size === "big") {
-      const shrank = PlayerSize.BIG.height - PlayerSize.SMALL.height;
-      this.size = "small";
-      this.setTexture(PlayerArt.tex.small.idle);
-      this.applyBodyForSize();
-      this.y += shrank;
+      const dy = FEET_FROM_CENTER * (Hero.BIG_SCALE - Hero.SMALL_SCALE);
+      this.setSizeState("small");
+      this.y += dy;
       this.startInvulnerability();
       return "shrank";
     }
@@ -317,10 +362,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.dead = true;
     this.setAlpha(1);
     this.endSpin();
-    this.anims.stop();
-    this.setTexture(
-      this.size === "big" ? PlayerArt.tex.big.jump : PlayerArt.tex.small.jump
-    );
+    this.anims.play(HeroAnim.fall, true); // tumble during the death arc
     this.setTint(0xff7a8a); // brief "hurt" flush
     this.body.setVelocity(0, -380); // hop up...
     this.setGravityY(Physics.GRAVITY_Y);

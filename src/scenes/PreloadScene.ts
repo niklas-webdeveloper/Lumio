@@ -1,10 +1,8 @@
 import Phaser from "phaser";
 import { SceneKeys } from "@/config/AssetKeys";
 import { GAME_WIDTH, GAME_HEIGHT } from "@/config/GameConfig";
-import {
-  createWorldTextures,
-  registerPlayerAnimations,
-} from "@/systems/TextureFactory";
+import { createWorldTextures } from "@/systems/TextureFactory";
+import { loadHeroAssets, registerHeroAnimations } from "@/config/characterAssets";
 
 /**
  * PreloadScene: loads all game assets and shows a progress bar.
@@ -18,13 +16,15 @@ export class PreloadScene extends Phaser.Scene {
 
   preload(): void {
     this.createProgressBar();
-    // Asset load calls (images, atlases, audio, tilemaps) go here later.
+    this.load.audio("bgm", "assets/audio/music/hadouken.mp3");
+    loadHeroAssets(this); // character sprite sheets + portrait
   }
 
   create(): void {
-    // Generate all procedural art now so every later scene can use it by key.
+    // Generate procedural world art + register the character's animations,
+    // so every later scene can use them by key.
     createWorldTextures(this);
-    registerPlayerAnimations(this);
+    registerHeroAnimations(this);
     this.scene.start(SceneKeys.Menu);
   }
 

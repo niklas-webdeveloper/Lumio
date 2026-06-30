@@ -63,6 +63,7 @@ export class GameScene extends Phaser.Scene {
   private enemies!: Phaser.GameObjects.Group;
   private plodders!: Phaser.GameObjects.Group;
   private pipes!: Phaser.GameObjects.Group;
+  private bgm!: Phaser.Sound.BaseSound;
 
   private failed = false;
   private levelComplete = false;
@@ -116,9 +117,10 @@ export class GameScene extends Phaser.Scene {
     this.setupPauseControls();
     this.exposeTestApi();
 
-    audioManager.startMusic();
+    this.bgm = this.sound.add("bgm", { loop: true, volume: audioManager.isMuted() ? 0 : 0.5 });
+    this.bgm.play();
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () =>
-      audioManager.stopMusic()
+      this.bgm.stop()
     );
   }
 
@@ -334,7 +336,7 @@ export class GameScene extends Phaser.Scene {
     this.failed = true;
     if (!this.player.isDead) this.player.die();
     this.cameraManager.shake(250, 0.01);
-    audioManager.stopMusic();
+    this.bgm.stop();
     audioManager.play("death");
 
     this.time.delayedCall(DEATH_DELAY, () => {
@@ -355,7 +357,7 @@ export class GameScene extends Phaser.Scene {
     if (this.levelComplete || this.failed) return;
     this.levelComplete = true;
     this.player.setVelocity(0, 0);
-    audioManager.stopMusic();
+    this.bgm.stop();
     audioManager.play("complete");
 
     const bonus = gameState.awardTimeBonus();
@@ -382,7 +384,12 @@ export class GameScene extends Phaser.Scene {
     // Keyboard listeners are cleared on scene shutdown, so re-add every create.
     this.input.keyboard?.on("keydown-P", pause);
     this.input.keyboard?.on("keydown-ESC", pause);
-    this.input.keyboard?.on("keydown-M", () => audioManager.toggleMute());
+    this.input.keyboard?.on("keydown-M", () => {
+      const isMuted = audioManager.toggleMute();
+      if (this.bgm) {
+        (this.bgm as Phaser.Sound.WebAudioSound).setVolume(isMuted ? 0 : 0.5);
+      }
+    });
 
     // Disable this scene's keys while paused so the pause/resume keys don't
     // double-fire across the two scenes. Systems events persist across restarts,

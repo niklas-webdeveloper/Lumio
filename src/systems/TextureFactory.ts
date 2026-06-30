@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { TextureKeys, PlayerArt } from "@/config/AssetKeys";
+import { TextureKeys } from "@/config/AssetKeys";
 import { TILE_COUNT } from "@/config/Tiles";
 import { GAME_WIDTH, GAME_HEIGHT, TILE_SIZE } from "@/config/GameConfig";
 
@@ -54,21 +54,33 @@ function scatter(
 // ----- Individual tile painters (each draws one 32px cell at offset ox) -----
 
 function paintGrassTop(g: Phaser.GameObjects.Graphics, ox: number): void {
-  px(g, ox, 0, TILE_SIZE, TILE_SIZE, 0x7a4b28); // dirt base
-  scatter(g, ox, 12, TILE_SIZE, 10, 0x5c3a20, 7);
-  px(g, ox, 0, TILE_SIZE, 11, 0x6abe30); // grass band
-  px(g, ox, 0, TILE_SIZE, 2, 0x9be35a); // bright top highlight
-  px(g, ox, 10, TILE_SIZE, 1, 0x4b8b28); // grass/dirt seam
-  // a few darker grass blades for texture
-  px(g, ox + 5, 2, 2, 6, 0x4b8b28);
-  px(g, ox + 16, 3, 2, 5, 0x4b8b28);
-  px(g, ox + 26, 2, 2, 6, 0x4b8b28);
+  // dirt base with subtle gradient effect
+  px(g, ox, 0, TILE_SIZE, 16, 0x7a4b28);
+  px(g, ox, 16, TILE_SIZE, 16, 0x6e4324);
+  scatter(g, ox, 12, TILE_SIZE, 12, 0x5c3a20, 7);
+  scatter(g, ox, 12, TILE_SIZE, 5, 0x472b16, 21); // darker bits
+  // lush grass band
+  px(g, ox, 0, TILE_SIZE, 11, 0x54a825);
+  px(g, ox, 0, TILE_SIZE, 3, 0x8cd649); // bright top highlight
+  px(g, ox, 10, TILE_SIZE, 2, 0x3d7a1b); // grass/dirt seam shadow
+  // stylized grass blades
+  px(g, ox + 4, 1, 2, 8, 0x3d7a1b);
+  px(g, ox + 5, 1, 2, 5, 0x8cd649); // blade highlight
+  px(g, ox + 14, 2, 2, 7, 0x3d7a1b);
+  px(g, ox + 24, 1, 2, 8, 0x3d7a1b);
+  px(g, ox + 25, 1, 2, 5, 0x8cd649); // blade highlight
+  // tiny white/yellow flowers
+  px(g, ox + 8, 4, 2, 2, 0xffffff);
+  px(g, ox + 9, 5, 2, 2, 0xffd700);
+  px(g, ox + 20, 3, 2, 2, 0xffffff);
 }
 
 function paintDirt(g: Phaser.GameObjects.Graphics, ox: number): void {
-  px(g, ox, 0, TILE_SIZE, TILE_SIZE, 0x7a4b28);
+  px(g, ox, 0, TILE_SIZE, 16, 0x7a4b28);
+  px(g, ox, 16, TILE_SIZE, 16, 0x6e4324); // subtle gradient
   scatter(g, ox, 0, TILE_SIZE, 14, 0x5c3a20, 13);
-  scatter(g, ox, 0, TILE_SIZE, 6, 0x9a6438, 29);
+  scatter(g, ox, 0, TILE_SIZE, 8, 0x472b16, 42); // darker specks
+  scatter(g, ox, 0, TILE_SIZE, 6, 0x9a6438, 29); // lighter specks
 }
 
 function paintStone(g: Phaser.GameObjects.Graphics, ox: number): void {
@@ -285,22 +297,28 @@ function createPlodder(scene: Phaser.Scene): void {
   const w = 28;
   const h = 24;
   const g = scene.make.graphics({ x: 0, y: 0 }, false);
-  // feet
-  px(g, 4, 20, 7, 4, 0x5a3617);
-  px(g, 17, 20, 7, 4, 0x5a3617);
+  // feet with shading
+  px(g, 4, 20, 7, 4, 0x3d230e);
+  px(g, 4, 20, 7, 2, 0x5a3617);
+  px(g, 17, 20, 7, 4, 0x3d230e);
+  px(g, 17, 20, 7, 2, 0x5a3617);
   // body
-  g.fillStyle(0xa9692f, 1);
-  g.fillEllipse(w / 2, 12, 26, 22);
-  g.fillStyle(0xc4854a, 1); // lighter top
+  g.fillStyle(0x8a5222, 1); // dark shadow base
+  g.fillEllipse(w / 2, 13, 26, 22);
+  g.fillStyle(0xa9692f, 1); // mid tone
+  g.fillEllipse(w / 2, 12, 26, 20);
+  g.fillStyle(0xc4854a, 1); // lighter top highlight
   g.fillEllipse(w / 2, 9, 22, 12);
   // eyes
   px(g, 8, 9, 5, 6, 0xffffff);
   px(g, 16, 9, 5, 6, 0xffffff);
-  px(g, 10, 11, 2, 3, 0x21130a); // pupils
-  px(g, 18, 11, 2, 3, 0x21130a);
+  px(g, 10, 11, 2, 3, 0x9e1717); // red evil pupils
+  px(g, 18, 11, 2, 3, 0x9e1717);
+  px(g, 11, 11, 1, 1, 0xffffff); // glint
+  px(g, 19, 11, 1, 1, 0xffffff);
   // angry brows
-  px(g, 7, 7, 6, 2, 0x3a2210);
-  px(g, 16, 7, 6, 2, 0x3a2210);
+  px(g, 7, 7, 6, 3, 0x2e190a);
+  px(g, 16, 7, 6, 3, 0x2e190a);
   g.generateTexture(TextureKeys.Plodder, w, h);
   g.destroy();
 }
@@ -312,26 +330,36 @@ function createSnapvine(scene: Phaser.Scene): void {
   const h = 40;
   const g = scene.make.graphics({ x: 0, y: 0 }, false);
   // stem
-  px(g, 11, 22, 4, 18, 0x3aa34a);
-  px(g, 11, 22, 2, 18, 0x53c163); // stem highlight
-  // leaves
-  g.fillStyle(0x2f8a3d, 1);
+  px(g, 11, 22, 4, 18, 0x1f6629); // darker stem shadow
+  px(g, 11, 22, 2, 18, 0x48b558); // stem highlight
+  // leaves with shading
+  g.fillStyle(0x195422, 1); // leaf shadow
+  g.fillTriangle(6, 27, 13, 23, 13, 31);
+  g.fillTriangle(20, 27, 13, 23, 13, 31);
+  g.fillStyle(0x329640, 1);
   g.fillTriangle(7, 26, 13, 22, 13, 30);
   g.fillTriangle(19, 26, 13, 22, 13, 30);
+  g.fillStyle(0x50c762, 1); // leaf highlight
+  g.fillTriangle(7, 26, 10, 24, 13, 30);
+  g.fillTriangle(19, 26, 16, 24, 13, 30);
   // head bulb
-  g.fillStyle(0xe23b4e, 1);
+  g.fillStyle(0xad1b2c, 1); // dark red base
+  g.fillEllipse(w / 2, 15, 26, 28);
+  g.fillStyle(0xe23b4e, 1); // mid red
   g.fillEllipse(w / 2, 14, 24, 26);
-  g.fillStyle(0xff6178, 1); // highlight
-  g.fillEllipse(w / 2 - 2, 10, 12, 12);
+  g.fillStyle(0xff7589, 1); // highlight reflection
+  g.fillEllipse(w / 2 - 3, 9, 10, 10);
   // mouth
-  g.fillStyle(0x5c0f1c, 1);
+  g.fillStyle(0x29050b, 1); // deeper mouth
+  g.fillEllipse(w / 2, 16, 16, 12);
+  g.fillStyle(0x5c0f1c, 1); // inner mouth
   g.fillEllipse(w / 2, 16, 14, 10);
   // teeth (white triangles top & bottom)
   g.fillStyle(0xffffff, 1);
   for (let i = 0; i < 3; i++) {
     const tx = 7 + i * 6;
-    g.fillTriangle(tx, 12, tx + 3, 16, tx + 6, 12); // upper
-    g.fillTriangle(tx, 20, tx + 3, 16, tx + 6, 20); // lower
+    g.fillTriangle(tx, 12, tx + 3, 17, tx + 6, 12); // upper sharper
+    g.fillTriangle(tx, 20, tx + 3, 15, tx + 6, 20); // lower sharper
   }
   g.generateTexture(TextureKeys.Snapvine, w, h);
   g.destroy();
@@ -344,15 +372,20 @@ function createPipe(scene: Phaser.Scene): void {
   const h = 80;
   const g = scene.make.graphics({ x: 0, y: 0 }, false);
   // shaft (inset under the rim)
-  px(g, 4, 14, w - 8, h - 14, 0x3aa34a);
-  px(g, 6, 14, 8, h - 14, 0x6cd07a); // left highlight
-  px(g, w - 14, 14, 8, h - 14, 0x2a7d37); // right shadow
+  px(g, 4, 16, w - 8, h - 16, 0x228731); // base dark green
+  px(g, 8, 16, w - 16, h - 16, 0x3aa34a); // mid green
+  px(g, 10, 16, 10, h - 16, 0x77e086); // bright left highlight
+  px(g, w - 16, 16, 8, h - 16, 0x186123); // right shadow
   // rim (full width, slightly taller band)
+  px(g, 0, 0, w, 18, 0x1d752a);
   px(g, 0, 0, w, 16, 0x2f8a3d);
-  px(g, 0, 0, w, 3, 0x6cd07a); // rim top sheen
-  px(g, 0, 13, w, 3, 0x215f29); // rim base shadow
+  px(g, 4, 0, 10, 16, 0x77e086); // rim highlight matching shaft
+  px(g, w - 12, 0, 10, 16, 0x186123); // rim shadow
+  px(g, 0, 0, w, 3, 0x9bf5a8); // very bright rim top sheen
+  px(g, 0, 15, w, 3, 0x134d1b); // rim base shadow
   // hollow mouth
-  px(g, 10, 3, w - 20, 11, 0x123a18);
+  px(g, 8, 3, w - 16, 13, 0x071f0a);
+  px(g, 10, 4, w - 20, 11, 0x123a18);
   g.generateTexture(TextureKeys.Pipe, w, h);
   g.destroy();
 }
@@ -399,148 +432,6 @@ function createBeacon(scene: Phaser.Scene): void {
   g.destroy();
 }
 
-type LumioPose = "idle" | "run0" | "run1" | "run2" | "run3" | "jump";
-type Pt = [number, number];
-
-/** Per-pose limb keyframes, authored in a base 24×32 grid (cx = 12). */
-interface PoseFrame {
-  nKnee: Pt;
-  nFoot: Pt;
-  fKnee: Pt;
-  fFoot: Pt;
-  nHand: Pt;
-  fHand: Pt;
-}
-
-const POSES: Record<LumioPose, PoseFrame> = {
-  // standing
-  idle: { nKnee: [15, 26], nFoot: [15, 31], fKnee: [9, 26], fFoot: [9, 31], nHand: [18, 20], fHand: [6, 20] },
-  // 4-frame run cycle (near = right leg/arm; legs & arms swing in opposition)
-  run0: { nKnee: [16, 25], nFoot: [18, 30], fKnee: [8, 25], fFoot: [6, 31], nHand: [13, 19], fHand: [16, 18] },
-  run1: { nKnee: [15, 25], nFoot: [14, 31], fKnee: [11, 24], fFoot: [11, 28], nHand: [16, 20], fHand: [11, 19] },
-  run2: { nKnee: [10, 25], nFoot: [7, 31], fKnee: [14, 25], fFoot: [17, 31], nHand: [18, 19], fHand: [10, 18] },
-  run3: { nKnee: [12, 24], nFoot: [12, 28], fKnee: [10, 26], fFoot: [10, 31], nHand: [13, 20], fHand: [14, 19] },
-  // airborne: legs tucked, arms up
-  jump: { nKnee: [16, 24], nFoot: [17, 27], fKnee: [8, 24], fFoot: [7, 27], nHand: [19, 9], fHand: [6, 10] },
-};
-
-/**
- * Draw one frame of Lumio — a small cyan creature with a head/body, two arms and
- * two jointed legs that visibly stride. Authored in a 24×32 grid and scaled to
- * the requested size, so small and big share one definition. Faces right by
- * default (flipX handles left).
- */
-function drawLumio(
-  g: Phaser.GameObjects.Graphics,
-  w: number,
-  h: number,
-  pose: LumioPose
-): void {
-  const sx = w / 24;
-  const sy = h / 32;
-  const sAvg = (sx + sy) / 2;
-
-  const COL = {
-    body: 0x5fc7f0,
-    outline: 0x2f93c4,
-    belly: 0xd9f3ff,
-    limb: 0x4ab3e0,
-    limbFar: 0x3884ad,
-    foot: 0x2f7fa8,
-    footFar: 0x276a8e,
-  };
-
-  // A thick, round-capped segment between two base-grid points (a limb bone).
-  const seg = (p1: Pt, p2: Pt, thick: number, color: number) => {
-    const ax = p1[0] * sx;
-    const ay = p1[1] * sy;
-    const bx = p2[0] * sx;
-    const by = p2[1] * sy;
-    const th = thick * sAvg;
-    const dx = bx - ax;
-    const dy = by - ay;
-    const len = Math.hypot(dx, dy) || 1;
-    const nx = (-dy / len) * (th / 2);
-    const ny = (dx / len) * (th / 2);
-    g.fillStyle(color, 1);
-    g.fillTriangle(ax + nx, ay + ny, ax - nx, ay - ny, bx - nx, by - ny);
-    g.fillTriangle(ax + nx, ay + ny, bx - nx, by - ny, bx + nx, by + ny);
-    g.fillCircle(ax, ay, th / 2);
-    g.fillCircle(bx, by, th / 2);
-  };
-  const drawLeg = (hip: Pt, knee: Pt, foot: Pt, col: number, fcol: number) => {
-    seg(hip, knee, 4.6, col);
-    seg(knee, foot, 4.0, col);
-    g.fillStyle(fcol, 1);
-    g.fillEllipse(foot[0] * sx, foot[1] * sy, 6.5 * sx, 3.6 * sy);
-  };
-  const drawArm = (sh: Pt, hand: Pt, col: number) => {
-    seg(sh, hand, 3.2, col);
-    g.fillStyle(col, 1);
-    g.fillCircle(hand[0] * sx, hand[1] * sy, 1.9 * sAvg);
-  };
-  const rrect = (bx: number, by: number, bw: number, bh: number, r: number, c: number) => {
-    g.fillStyle(c, 1);
-    g.fillRoundedRect(bx * sx, by * sy, bw * sx, bh * sy, r * sAvg);
-  };
-  const circle = (cx: number, cy: number, r: number, c: number) => {
-    g.fillStyle(c, 1);
-    g.fillCircle(cx * sx, cy * sy, r * sAvg);
-  };
-
-  const p = POSES[pose];
-  const nearHip: Pt = [14.5, 20];
-  const farHip: Pt = [9.5, 20];
-  const nearSh: Pt = [16.5, 13];
-  const farSh: Pt = [7.5, 13];
-
-  // Back (far) limbs first so they sit behind the body.
-  drawArm(farSh, p.fHand, COL.limbFar);
-  drawLeg(farHip, p.fKnee, p.fFoot, COL.limbFar, COL.footFar);
-
-  // Body (head + torso as one rounded shape) with a crisp outline.
-  rrect(4, 3, 16, 18, 7, COL.body);
-  g.lineStyle(2 * sAvg, COL.outline, 1);
-  g.strokeRoundedRect(4 * sx, 3 * sy, 16 * sx, 18 * sy, 7 * sAvg);
-  g.fillStyle(COL.belly, 1);
-  g.fillEllipse(12 * sx, 15 * sy, 9 * sx, 7 * sy);
-
-  // Eyes (face right) + sprout.
-  circle(8.6, 9, 3, 0xffffff);
-  circle(15.4, 9, 3, 0xffffff);
-  circle(9.6, 9, 1.5, 0x16252e);
-  circle(16.4, 9, 1.5, 0x16252e);
-  g.fillStyle(0x3f8f2f, 1);
-  g.fillRect(11 * sx, 0, 2 * sx, 4 * sy);
-  circle(14, 1.5, 2.4, 0x6abe30);
-
-  // Front (near) limbs.
-  drawLeg(nearHip, p.nKnee, p.nFoot, COL.limb, COL.foot);
-  drawArm(nearSh, p.nHand, COL.limb);
-}
-
-/** Generate Lumio's frame textures for both sizes. */
-function createPlayerFrames(scene: Phaser.Scene): void {
-  const gen = (key: string, w: number, h: number, pose: LumioPose) => {
-    if (scene.textures.exists(key)) return;
-    const g = scene.make.graphics({ x: 0, y: 0 }, false);
-    drawLumio(g, w, h, pose);
-    g.generateTexture(key, w, h);
-    g.destroy();
-  };
-  const sizes = [
-    { t: PlayerArt.tex.small, w: 24, h: 32 },
-    { t: PlayerArt.tex.big, w: 30, h: 46 },
-  ];
-  for (const { t, w, h } of sizes) {
-    gen(t.idle, w, h, "idle");
-    gen(t.run0, w, h, "run0");
-    gen(t.run1, w, h, "run1");
-    gen(t.run2, w, h, "run2");
-    gen(t.run3, w, h, "run3");
-    gen(t.jump, w, h, "jump");
-  }
-}
 
 /** Small tintable particle bits (spark, crumb, dust puff). */
 function createParticleTextures(scene: Phaser.Scene): void {
@@ -582,28 +473,5 @@ export function createWorldTextures(scene: Phaser.Scene): void {
   createPlodder(scene);
   createSnapvine(scene);
   createPipe(scene);
-  createPlayerFrames(scene);
   createParticleTextures(scene);
-}
-
-/** Register Lumio's animations (global; call once in PreloadScene). */
-export function registerPlayerAnimations(scene: Phaser.Scene): void {
-  const def = (key: string, frames: string[], frameRate: number) => {
-    if (scene.anims.exists(key)) return;
-    scene.anims.create({
-      key,
-      frames: frames.map((f) => ({ key: f })),
-      frameRate,
-      repeat: -1,
-    });
-  };
-  const A = PlayerArt.anim;
-  const S = PlayerArt.tex.small;
-  const B = PlayerArt.tex.big;
-  def(A.small.idle, [S.idle], 1);
-  def(A.small.run, [S.run0, S.run1, S.run2, S.run3], 12);
-  def(A.small.jump, [S.jump], 1);
-  def(A.big.idle, [B.idle], 1);
-  def(A.big.run, [B.run0, B.run1, B.run2, B.run3], 12);
-  def(A.big.jump, [B.jump], 1);
 }

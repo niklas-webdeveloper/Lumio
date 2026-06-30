@@ -36,14 +36,20 @@ export abstract class Enemy extends Phaser.Physics.Arcade.Sprite {
     this.dying = true;
     this.setVelocity(0, 0);
     this.body.enable = false;
+    // A more realistic, satisfying "squash" animation
     this.scene.tweens.add({
       targets: this,
-      scaleY: 0.15,
-      y: this.y + 10,
-      alpha: 0.5,
-      duration: 160,
-      ease: "Quad.out",
-      onComplete: () => this.destroy(),
+      scaleX: 1.4, // bulge out
+      scaleY: 0.2, // squash flat
+      alpha: { from: 1, to: 0 }, // fade out simultaneously
+      duration: 150,
+      ease: "Power2", // smooth squash
+      onComplete: () => {
+        // Optional: spawn a small dust puff right where it died
+        // (Assuming GameScene has a reference to particles, but since we are in Enemy,
+        // we can just destroy it after the tween).
+        this.destroy();
+      },
     });
   }
 }

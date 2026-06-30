@@ -3,11 +3,12 @@
 An original 2D side-scrolling platformer built with **Phaser 3**, **Vite**, and
 **TypeScript**. Crisp, controllable movement and a clean pixel-art presentation.
 
-It's an **original brand** — original character names (Lumio, Plodder, Snapvine,
-Growcap…) and **100% procedurally generated art and audio**, so there are no
-third-party assets to license. Everything you see and hear is drawn/synthesized
-in code, and is structured so you can drop in your own art later without touching
-game logic (see [Swapping in your own assets](#swapping-in-your-own-assets)).
+It's an **original brand** with original names (Plodder, Snapvine, Growcap…).
+The world art (tiles, background, items, enemies) and the sound effects are
+**procedurally generated in code**; the **player character** is an animated
+sprite pack by **Kibyra** (see [Credits](#credits)). The asset pipeline is
+structured so you can drop in your own art without touching game logic (see
+[Swapping in your own assets](#swapping-in-your-own-assets)).
 
 ![Lumio's Leap](https://img.shields.io/badge/Phaser-3-blue) ![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue)
 
@@ -186,10 +187,16 @@ Phaser's sound manager. Mute (M) and the persisted setting still apply.
 - Input is abstracted behind `InputManager` (a per-frame intent snapshot), so a
   gamepad or touch controls can be added in one place.
 
+## Credits
+
+- **Player character** — "2D Pixel Art Character Animated Sprite Pack" by
+  **Kibyra** (https://kibyra.itch.io). Used under the pack's license (personal &
+  commercial use and edits allowed; redistribution of the pack itself is not).
+- **World art & SFX** — original, generated procedurally in code.
+- **Music** — `public/assets/audio/music/hadouken.mp3` (project-supplied).
+
 ## License
 
-Code and all generated assets are original. MIT licensed — see below.
-
----
-
-Built as an original IP; no third-party game assets are used.
+The game **code** and the **procedurally generated** assets are original and
+MIT licensed (see `LICENSE`). The bundled character sprite pack and music keep
+their own licenses/ownership as noted in Credits.
