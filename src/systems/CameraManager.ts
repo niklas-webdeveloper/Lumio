@@ -1,4 +1,5 @@
 import Phaser from "phaser";
+import { RENDER_SCALE } from "@/config/GameConfig";
 
 /** Camera tuning — a deadzone prevents jitter; gentle lerp smooths motion. */
 const CameraConfig = {
@@ -25,8 +26,9 @@ export class CameraManager {
     worldHeight: number
   ) {
     this.camera = scene.cameras.main;
+    // Render the world at the design view (640×360) supersampled by RENDER_SCALE.
+    this.camera.setZoom(RENDER_SCALE);
     this.camera.setBounds(0, 0, worldWidth, worldHeight);
-    this.camera.setRoundPixels(true);
     this.camera.startFollow(target, true, CameraConfig.LERP_X, CameraConfig.LERP_Y);
     this.camera.setDeadzone(
       CameraConfig.DEADZONE_WIDTH,

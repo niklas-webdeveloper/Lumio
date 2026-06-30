@@ -1,6 +1,6 @@
 import Phaser from "phaser";
 import { SceneKeys } from "@/config/AssetKeys";
-import { GAME_WIDTH } from "@/config/GameConfig";
+import { GAME_WIDTH, applyDesignViewport } from "@/config/GameConfig";
 import { LEVELS } from "@/config/levels";
 import { gameState } from "@/systems/GameState";
 import { saveState } from "@/systems/SaveState";
@@ -34,6 +34,7 @@ export class LevelSelectScene extends Phaser.Scene {
   }
 
   create(): void {
+    applyDesignViewport(this);
     fadeIn(this);
     this.parallax = new ParallaxBackground(this);
     this.cards = [];
@@ -42,7 +43,7 @@ export class LevelSelectScene extends Phaser.Scene {
 
     this.add
       .text(GAME_WIDTH / 2, 48, "SELECT LEVEL", {
-        fontFamily: "monospace",
+        fontFamily: "'Nunito', sans-serif",
         fontSize: "34px",
         color: "#ffffff",
         fontStyle: "bold",
@@ -70,7 +71,7 @@ export class LevelSelectScene extends Phaser.Scene {
     });
     this.add
       .text(GAME_WIDTH - 12, 332, "Arrows choose - Enter play - Esc back", {
-        fontFamily: "monospace",
+        fontFamily: "'Nunito', sans-serif",
         fontSize: "11px",
         color: "#0d3b4d",
       })
@@ -81,7 +82,7 @@ export class LevelSelectScene extends Phaser.Scene {
   }
 
   override update(): void {
-    this.parallax.update(0);
+    this.parallax.update(this.cameras.main);
   }
 
   private createCard(x: number, y: number, index: number, title: string): Card {
@@ -91,7 +92,7 @@ export class LevelSelectScene extends Phaser.Scene {
 
     const numText = this.add
       .text(0, -44, `${index + 1}`, {
-        fontFamily: "monospace",
+        fontFamily: "'Nunito', sans-serif",
         fontSize: "44px",
         color: "#ffffff",
         fontStyle: "bold",
@@ -99,7 +100,7 @@ export class LevelSelectScene extends Phaser.Scene {
       .setOrigin(0.5);
     const nameText = this.add
       .text(0, 6, title, {
-        fontFamily: "monospace",
+        fontFamily: "'Nunito', sans-serif",
         fontSize: "13px",
         color: "#ffffff",
         align: "center",
@@ -108,7 +109,7 @@ export class LevelSelectScene extends Phaser.Scene {
       .setOrigin(0.5);
     const status = this.add
       .text(0, 52, locked ? "LOCKED" : index < this.unlocked ? "CLEARED" : "PLAY", {
-        fontFamily: "monospace",
+        fontFamily: "'Nunito', sans-serif",
         fontSize: "13px",
         color: locked ? "#dfe6ee" : "#eaffef",
         fontStyle: "bold",

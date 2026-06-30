@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <!-- Empty data-URI icon avoids a 404 favicon request. Replace with real art later. -->
     <link rel="icon" href="data:," />
+    <!-- Self-hosted modern fonts (Fredoka + Nunito). -->
+    <link rel="preload" as="font" type="font/woff2" href="/assets/fonts/Fredoka-600.woff2" crossorigin />
+    <link rel="preload" as="font" type="font/woff2" href="/assets/fonts/Nunito-700.woff2" crossorigin />
+    <link rel="stylesheet" href="/assets/fonts/fonts.css" />
     <title>Lumio's Leap</title>
     <style>
       :root {
@@ -15,9 +19,9 @@
         margin: 0;
         padding: 0;
         height: 100%;
-        background: #0d1117;
+        background: #0e1726;
         overflow: hidden;
-        font-family: system-ui, -apple-system, sans-serif;
+        font-family: "Nunito", system-ui, sans-serif;
       }
       /* Center the canvas and let Phaser's Scale.FIT manage its size. */
       #game-root {
@@ -27,9 +31,10 @@
         align-items: center;
         justify-content: center;
       }
+      /* High-resolution canvas; let the browser smooth it (no pixelation). */
       #game-root canvas {
-        image-rendering: pixelated; /* crisp pixel art, no blur */
-        box-shadow: 0 0 40px rgba(0, 0, 0, 0.6);
+        image-rendering: auto;
+        box-shadow: 0 0 60px rgba(0, 0, 0, 0.55);
       }
     </style>
   </head>

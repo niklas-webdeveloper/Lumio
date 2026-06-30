@@ -1,6 +1,6 @@
 import Phaser from "phaser";
 import { SceneKeys } from "@/config/AssetKeys";
-import { GAME_WIDTH, GAME_HEIGHT } from "@/config/GameConfig";
+import { GAME_WIDTH, GAME_HEIGHT, applyDesignViewport } from "@/config/GameConfig";
 import { HeroPortrait } from "@/config/characterAssets";
 import { saveState } from "@/systems/SaveState";
 import { ParallaxBackground } from "@/systems/ParallaxBackground";
@@ -19,6 +19,7 @@ export class MenuScene extends Phaser.Scene {
   }
 
   create(): void {
+    applyDesignViewport(this);
     fadeIn(this);
     this.parallax = new ParallaxBackground(this);
 
@@ -27,7 +28,7 @@ export class MenuScene extends Phaser.Scene {
     // Title with a soft shadow.
     this.add
       .text(cx, 70, "LUMIO'S LEAP", {
-        fontFamily: "monospace",
+        fontFamily: "'Nunito', sans-serif",
         fontSize: "46px",
         color: "#ffffff",
         fontStyle: "bold",
@@ -38,7 +39,7 @@ export class MenuScene extends Phaser.Scene {
       .setShadow(0, 4, "#00000055", 6);
     this.add
       .text(cx, 108, "a bright platforming adventure", {
-        fontFamily: "monospace",
+        fontFamily: "'Nunito', sans-serif",
         fontSize: "13px",
         color: "#0d3b4d",
       })
@@ -79,14 +80,14 @@ export class MenuScene extends Phaser.Scene {
 
     this.add
       .text(cx, GAME_HEIGHT - 28, "Press SPACE / ENTER to play", {
-        fontFamily: "monospace",
+        fontFamily: "'Nunito', sans-serif",
         fontSize: "13px",
         color: "#0d3b4d",
       })
       .setOrigin(0.5);
     this.add
       .text(GAME_WIDTH - 6, GAME_HEIGHT - 6, "character by Kibyra", {
-        fontFamily: "monospace",
+        fontFamily: "'Nunito', sans-serif",
         fontSize: "9px",
         color: "#0d3b4d99",
       })
@@ -97,7 +98,7 @@ export class MenuScene extends Phaser.Scene {
   }
 
   override update(): void {
-    this.parallax.update(0); // keep the god-rays drifting
+    this.parallax.update(this.cameras.main); // keep the god-rays drifting
   }
 
   private goToLevelSelect(): void {

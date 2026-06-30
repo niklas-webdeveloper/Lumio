@@ -1,0 +1,7 @@
+/* Self-hosted fonts (Google Fonts: Fredoka, Nunito) */
+@font-face{font-family:'Fredoka';font-style:normal;font-weight:500;font-display:block;src:url('/assets/fonts/Fredoka-500.woff2') format('woff2');}
+@font-face{font-family:'Fredoka';font-style:normal;font-weight:600;font-display:block;src:url('/assets/fonts/Fredoka-600.woff2') format('woff2');}
+@font-face{font-family:'Fredoka';font-style:normal;font-weight:700;font-display:block;src:url('/assets/fonts/Fredoka-700.woff2') format('woff2');}
+@font-face{font-family:'Nunito';font-style:normal;font-weight:400;font-display:block;src:url('/assets/fonts/Nunito-400.woff2') format('woff2');}
+@font-face{font-family:'Nunito';font-style:normal;font-weight:700;font-display:block;src:url('/assets/fonts/Nunito-700.woff2') format('woff2');}
+@font-face{font-family:'Nunito';font-style:normal;font-weight:800;font-display:block;src:url('/assets/fonts/Nunito-800.woff2') format('woff2');}

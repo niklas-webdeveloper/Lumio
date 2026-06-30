@@ -1,16 +1,44 @@
 import Phaser from "phaser";
 
 /**
- * Centralized display / world constants.
- * Base resolution is a 16:9 retro frame that scales crisply to any window
- * (640x360 × 3 = 1920x1080). Tiles are 32px in world space.
+ * Display / world constants.
+ *
+ * The game is *authored* in a 640×360 "design" coordinate space (all layouts,
+ * font sizes, physics and levels use these units). To render crisply on modern
+ * high-resolution screens, the actual canvas is rendered at RENDER_SCALE× that
+ * (1920×1080) and every camera is zoomed by RENDER_SCALE. This supersamples all
+ * shapes and text — razor-sharp UI — without changing any gameplay numbers.
  */
-export const GAME_WIDTH = 640;
-export const GAME_HEIGHT = 360;
+export const GAME_WIDTH = 640; // design width
+export const GAME_HEIGHT = 360; // design height
 export const TILE_SIZE = 32;
 
-/** Background color used before a scene draws its own (GitHub-dark). */
-export const BACKGROUND_COLOR = "#1a1c2c";
+/** Canvas is rendered at this multiple of the design size for crispness. */
+export const RENDER_SCALE = 3;
+export const CANVAS_WIDTH = GAME_WIDTH * RENDER_SCALE; // 1920
+export const CANVAS_HEIGHT = GAME_HEIGHT * RENDER_SCALE; // 1080
+
+/** Modern font stacks (self-hosted; see public/assets/fonts/fonts.css). */
+export const Fonts = {
+  /** Rounded display font for titles / big numbers. */
+  display: "'Fredoka', 'Trebuchet MS', sans-serif",
+  /** Clean UI/body font. */
+  body: "'Nunito', 'Segoe UI', sans-serif",
+} as const;
+
+/** Background color used before a scene draws its own. */
+export const BACKGROUND_COLOR = "#0e1726";
+
+/**
+ * Point a static scene's camera at the 640×360 design rectangle, rendered at
+ * RENDER_SCALE×. Call once in a scene's create(). (The gameplay camera instead
+ * follows the player at the same zoom — see CameraManager.)
+ */
+export function applyDesignViewport(scene: Phaser.Scene): void {
+  const cam = scene.cameras.main;
+  cam.setZoom(RENDER_SCALE);
+  cam.centerOn(GAME_WIDTH / 2, GAME_HEIGHT / 2);
+}
 
 /**
  * Builds the Phaser game config. Scenes are injected by the caller so this
@@ -23,10 +51,10 @@ export function createGameConfig(
     type: Phaser.AUTO,
     parent: "game-root",
     backgroundColor: BACKGROUND_COLOR,
-    width: GAME_WIDTH,
-    height: GAME_HEIGHT,
-    pixelArt: true, // nearest-neighbor scaling -> crisp pixel art
-    roundPixels: true,
+    width: CANVAS_WIDTH,
+    height: CANVAS_HEIGHT,
+    pixelArt: false, // smooth, antialiased rendering (no nearest-neighbor)
+    roundPixels: false,
     scale: {
       mode: Phaser.Scale.FIT,
       autoCenter: Phaser.Scale.CENTER_BOTH,
@@ -39,7 +67,9 @@ export function createGameConfig(
       },
     },
     render: {
-      antialias: false,
+      antialias: true,
+      antialiasGL: true,
+      roundPixels: false,
     },
     fps: {
       target: 60,

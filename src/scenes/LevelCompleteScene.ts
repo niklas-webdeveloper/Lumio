@@ -1,6 +1,6 @@
 import Phaser from "phaser";
 import { SceneKeys } from "@/config/AssetKeys";
-import { GAME_WIDTH, GAME_HEIGHT } from "@/config/GameConfig";
+import { GAME_WIDTH, GAME_HEIGHT, applyDesignViewport } from "@/config/GameConfig";
 import { gameState } from "@/systems/GameState";
 import { fadeIn, fadeOutThen } from "@/systems/transition";
 
@@ -22,6 +22,7 @@ export class LevelCompleteScene extends Phaser.Scene {
   }
 
   create(): void {
+    applyDesignViewport(this);
     fadeIn(this);
     this.add
       .rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0x0d1117, 0.78)
@@ -32,7 +33,7 @@ export class LevelCompleteScene extends Phaser.Scene {
 
     this.add
       .text(cx, 96, title, {
-        fontFamily: "monospace",
+        fontFamily: "'Nunito', sans-serif",
         fontSize: "36px",
         color: "#9be35a",
         fontStyle: "bold",
@@ -41,7 +42,7 @@ export class LevelCompleteScene extends Phaser.Scene {
 
     this.add
       .text(cx, 156, `Time Bonus: +${this.payload.bonus}`, {
-        fontFamily: "monospace",
+        fontFamily: "'Nunito', sans-serif",
         fontSize: "16px",
         color: "#ffe08a",
       })
@@ -49,7 +50,7 @@ export class LevelCompleteScene extends Phaser.Scene {
 
     this.add
       .text(cx, 184, `Score: ${gameState.score}`, {
-        fontFamily: "monospace",
+        fontFamily: "'Nunito', sans-serif",
         fontSize: "18px",
         color: "#ffffff",
       })
@@ -60,7 +61,7 @@ export class LevelCompleteScene extends Phaser.Scene {
       : "Press SPACE — Next Level";
     const promptText = this.add
       .text(cx, 256, prompt, {
-        fontFamily: "monospace",
+        fontFamily: "'Nunito', sans-serif",
         fontSize: "16px",
         color: "#ffffff",
         backgroundColor: "#00000066",

@@ -1,6 +1,6 @@
 import Phaser from "phaser";
 import { SceneKeys } from "@/config/AssetKeys";
-import { GAME_WIDTH, GAME_HEIGHT } from "@/config/GameConfig";
+import { GAME_WIDTH, GAME_HEIGHT, applyDesignViewport } from "@/config/GameConfig";
 import { gameState } from "@/systems/GameState";
 import { saveState } from "@/systems/SaveState";
 import { fadeIn, fadeOutThen } from "@/systems/transition";
@@ -12,6 +12,7 @@ export class GameOverScene extends Phaser.Scene {
   }
 
   create(): void {
+    applyDesignViewport(this);
     fadeIn(this);
     const isRecord = saveState.recordScore(gameState.score);
 
@@ -23,7 +24,7 @@ export class GameOverScene extends Phaser.Scene {
 
     this.add
       .text(cx, 110, "GAME OVER", {
-        fontFamily: "monospace",
+        fontFamily: "'Nunito', sans-serif",
         fontSize: "40px",
         color: "#ff8aa0",
         fontStyle: "bold",
@@ -32,7 +33,7 @@ export class GameOverScene extends Phaser.Scene {
 
     this.add
       .text(cx, 168, `Score: ${gameState.score}`, {
-        fontFamily: "monospace",
+        fontFamily: "'Nunito', sans-serif",
         fontSize: "18px",
         color: "#ffffff",
       })
@@ -46,7 +47,7 @@ export class GameOverScene extends Phaser.Scene {
           ? "New High Score!"
           : `High Score: ${saveState.getHighScore()}`,
         {
-          fontFamily: "monospace",
+          fontFamily: "'Nunito', sans-serif",
           fontSize: "14px",
           color: "#ffe08a",
         }
@@ -55,7 +56,7 @@ export class GameOverScene extends Phaser.Scene {
 
     const prompt = this.add
       .text(cx, 256, "Press SPACE — Back to Menu", {
-        fontFamily: "monospace",
+        fontFamily: "'Nunito', sans-serif",
         fontSize: "16px",
         color: "#ffffff",
         backgroundColor: "#00000066",

@@ -1,6 +1,6 @@
 import Phaser from "phaser";
 import { SceneKeys } from "@/config/AssetKeys";
-import { GAME_WIDTH, GAME_HEIGHT } from "@/config/GameConfig";
+import { GAME_WIDTH, GAME_HEIGHT, applyDesignViewport } from "@/config/GameConfig";
 import { getLevel } from "@/config/levels";
 import { gameState, Progression } from "@/systems/GameState";
 
@@ -21,11 +21,12 @@ export class UIScene extends Phaser.Scene {
   }
 
   create(): void {
+    applyDesignViewport(this);
     // Translucent top bar for legibility over any background.
     this.add.rectangle(0, 0, GAME_WIDTH, 26, 0x000000, 0.4).setOrigin(0, 0);
 
     const base: Phaser.Types.GameObjects.Text.TextStyle = {
-      fontFamily: "monospace",
+      fontFamily: "'Nunito', sans-serif",
       fontSize: "14px",
       color: "#ffffff",
     };
@@ -48,7 +49,7 @@ export class UIScene extends Phaser.Scene {
         GAME_WIDTH / 2,
         GAME_HEIGHT - 6,
         "←→/AD move · Space jump · Shift sprint · P pause",
-        { fontFamily: "monospace", fontSize: "10px", color: "#ffffffaa" }
+        { fontFamily: "'Nunito', sans-serif", fontSize: "10px", color: "#ffffffaa" }
       )
       .setOrigin(0.5, 1);
 
@@ -60,7 +61,7 @@ export class UIScene extends Phaser.Scene {
     const title = getLevel(gameState.levelIndex)?.title ?? "";
     const card = this.add
       .text(GAME_WIDTH / 2, GAME_HEIGHT / 2 - 40, title, {
-        fontFamily: "monospace",
+        fontFamily: "'Nunito', sans-serif",
         fontSize: "26px",
         color: "#ffffff",
         fontStyle: "bold",

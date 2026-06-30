@@ -1,6 +1,6 @@
 import Phaser from "phaser";
 import { SceneKeys } from "@/config/AssetKeys";
-import { GAME_WIDTH, GAME_HEIGHT } from "@/config/GameConfig";
+import { GAME_WIDTH, GAME_HEIGHT, applyDesignViewport } from "@/config/GameConfig";
 
 /**
  * Pause overlay. Launched on top of a paused GameScene; resuming stops this
@@ -12,13 +12,14 @@ export class PauseScene extends Phaser.Scene {
   }
 
   create(): void {
+    applyDesignViewport(this);
     this.add
       .rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0x0d1117, 0.6)
       .setOrigin(0, 0);
 
     this.add
       .text(GAME_WIDTH / 2, GAME_HEIGHT / 2 - 14, "PAUSED", {
-        fontFamily: "monospace",
+        fontFamily: "'Nunito', sans-serif",
         fontSize: "34px",
         color: "#ffffff",
         fontStyle: "bold",
@@ -27,7 +28,7 @@ export class PauseScene extends Phaser.Scene {
 
     this.add
       .text(GAME_WIDTH / 2, GAME_HEIGHT / 2 + 24, "Press P or Esc to resume", {
-        fontFamily: "monospace",
+        fontFamily: "'Nunito', sans-serif",
         fontSize: "14px",
         color: "#c0c0d0",
       })

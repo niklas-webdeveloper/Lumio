@@ -1,6 +1,6 @@
 import Phaser from "phaser";
 import { SceneKeys } from "@/config/AssetKeys";
-import { GAME_WIDTH, GAME_HEIGHT } from "@/config/GameConfig";
+import { GAME_WIDTH, GAME_HEIGHT, applyDesignViewport } from "@/config/GameConfig";
 import { createWorldTextures } from "@/systems/TextureFactory";
 import { loadHeroAssets, registerHeroAnimations } from "@/config/characterAssets";
 
@@ -15,6 +15,7 @@ export class PreloadScene extends Phaser.Scene {
   }
 
   preload(): void {
+    applyDesignViewport(this);
     this.createProgressBar();
     this.load.audio("bgm", "assets/audio/music/hadouken.mp3");
     loadHeroAssets(this); // character sprite sheets + portrait
@@ -43,7 +44,7 @@ export class PreloadScene extends Phaser.Scene {
 
     this.add
       .text(GAME_WIDTH / 2, y - 24, "Loading…", {
-        fontFamily: "monospace",
+        fontFamily: "'Nunito', sans-serif",
         fontSize: "16px",
         color: "#ffffff",
       })

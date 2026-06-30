@@ -138,7 +138,7 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
-    this.parallax.update(this.cameraManager.scrollX);
+    this.parallax.update(this.cameras.main);
   }
 
   // ----- Spawning -----
