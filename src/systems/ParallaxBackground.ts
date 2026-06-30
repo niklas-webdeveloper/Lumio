@@ -5,6 +5,7 @@ import { GAME_WIDTH, GAME_HEIGHT } from "@/config/GameConfig";
 /** Depths kept well behind gameplay so the background never overlaps it. */
 const DEPTH = {
   sky: -100,
+  rays: -95,
   hillsFar: -90,
   hillsNear: -80,
 } as const;
@@ -15,27 +16,37 @@ interface ParallaxLayer {
 }
 
 /**
- * Multi-layer parallax background. The sky is a fixed gradient; two hill layers
- * scroll their textures at fractions of the camera speed to fake depth. Layers
- * are screen-fixed (scrollFactor 0) and scrolled via tilePositionX instead, so
- * they tile seamlessly no matter how wide the level is.
+ * Multi-layer parallax background for a bright, modern look: a gradient sky with
+ * a sun glow, soft additive god-rays that drift, then two fluffy foliage layers
+ * that scroll at fractions of the camera speed. Foliage layers are screen-fixed
+ * (scrollFactor 0) and scrolled via tilePositionX so they tile seamlessly.
  */
 export class ParallaxBackground {
   private readonly layers: ParallaxLayer[] = [];
+  private readonly rays: Phaser.GameObjects.TileSprite;
 
   constructor(scene: Phaser.Scene) {
-    // Static gradient sky, pinned to the viewport.
+    // Static gradient sky + sun, pinned to the viewport.
     scene.add
       .image(0, 0, TextureKeys.Sky)
       .setOrigin(0, 0)
       .setScrollFactor(0)
       .setDepth(DEPTH.sky);
 
-    this.addHillLayer(scene, TextureKeys.HillsFar, 200, DEPTH.hillsFar, 0.15);
-    this.addHillLayer(scene, TextureKeys.HillsNear, 220, DEPTH.hillsNear, 0.4);
+    // Additive god-rays, faint and slowly drifting.
+    this.rays = scene.add
+      .tileSprite(0, 0, GAME_WIDTH, GAME_HEIGHT, TextureKeys.Rays)
+      .setOrigin(0, 0)
+      .setScrollFactor(0)
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setAlpha(0.5)
+      .setDepth(DEPTH.rays);
+
+    this.addFoliageLayer(scene, TextureKeys.HillsFar, 220, DEPTH.hillsFar, 0.15);
+    this.addFoliageLayer(scene, TextureKeys.HillsNear, 240, DEPTH.hillsNear, 0.4);
   }
 
-  private addHillLayer(
+  private addFoliageLayer(
     scene: Phaser.Scene,
     key: string,
     texHeight: number,
@@ -55,5 +66,7 @@ export class ParallaxBackground {
     for (const layer of this.layers) {
       layer.sprite.tilePositionX = cameraScrollX * layer.factor;
     }
+    // Gentle independent drift so the light feels alive.
+    this.rays.tilePositionX = cameraScrollX * 0.08 + this.rays.scene.time.now * 0.004;
   }
 }

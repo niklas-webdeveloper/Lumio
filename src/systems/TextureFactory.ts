@@ -84,13 +84,19 @@ function paintDirt(g: Phaser.GameObjects.Graphics, ox: number): void {
 }
 
 function paintStone(g: Phaser.GameObjects.Graphics, ox: number): void {
-  px(g, ox, 0, TILE_SIZE, TILE_SIZE, 0x9098a8);
-  px(g, ox, 0, TILE_SIZE, 3, 0xb7bdc9); // top highlight
-  px(g, ox, TILE_SIZE - 3, TILE_SIZE, 3, 0x5f6678); // bottom shadow
-  px(g, ox, 0, 2, TILE_SIZE, 0xa6adba); // left highlight
-  // a subtle crack
-  px(g, ox + 18, 8, 2, 10, 0x5f6678);
-  px(g, ox + 16, 14, 2, 6, 0x5f6678);
+  // Clean, modern beveled block.
+  px(g, ox, 0, TILE_SIZE, TILE_SIZE, 0x9aa6bd); // base
+  px(g, ox + 2, 2, TILE_SIZE - 4, TILE_SIZE - 4, 0xaab6cc); // inner panel
+  px(g, ox, 0, TILE_SIZE, 3, 0xd2dceb); // bright top bevel
+  px(g, ox, 0, 3, TILE_SIZE, 0xc2cee0); // left bevel
+  px(g, ox, TILE_SIZE - 3, TILE_SIZE, 3, 0x6a7488); // bottom shade
+  px(g, ox + TILE_SIZE - 3, 0, 3, TILE_SIZE, 0x778199); // right shade
+  // corner studs for a toy-like feel
+  const stud = 0x5f6a80;
+  px(g, ox + 4, 4, 2, 2, stud);
+  px(g, ox + 26, 4, 2, 2, stud);
+  px(g, ox + 4, 26, 2, 2, stud);
+  px(g, ox + 26, 26, 2, 2, stud);
 }
 
 function paintBrick(g: Phaser.GameObjects.Graphics, ox: number): void {
@@ -109,24 +115,33 @@ function paintBrick(g: Phaser.GameObjects.Graphics, ox: number): void {
 }
 
 function paintLucky(g: Phaser.GameObjects.Graphics, ox: number): void {
-  px(g, ox, 0, TILE_SIZE, TILE_SIZE, 0xf2c14e);
-  px(g, ox, 0, TILE_SIZE, 2, 0xffe08a); // top sheen
-  px(g, ox, 0, 2, TILE_SIZE, 0xffe08a);
-  px(g, ox + 1, TILE_SIZE - 2, TILE_SIZE - 1, 2, 0xc8941f); // bottom edge
-  px(g, ox + TILE_SIZE - 2, 1, 2, TILE_SIZE - 1, 0xc8941f);
+  // Beveled, glossy gold block.
+  px(g, ox, 0, TILE_SIZE, TILE_SIZE, 0xe6a92e); // base
+  px(g, ox, 0, TILE_SIZE, 3, 0xffe79a); // bright top bevel
+  px(g, ox, 0, 3, TILE_SIZE, 0xffdd7d); // left bevel
+  px(g, ox, TILE_SIZE - 3, TILE_SIZE, 3, 0xb27d12); // bottom shade
+  px(g, ox + TILE_SIZE - 3, 0, 3, TILE_SIZE, 0xc28e1c); // right shade
+  // diagonal gloss streak
+  g.fillStyle(0xfff2c2, 0.5);
+  g.fillTriangle(ox + 6, 4, ox + 16, 4, ox + 6, 14);
   // corner rivets
-  const rivet = 0x8a5e12;
-  px(g, ox + 3, 3, 2, 2, rivet);
-  px(g, ox + 27, 3, 2, 2, rivet);
-  px(g, ox + 3, 27, 2, 2, rivet);
-  px(g, ox + 27, 27, 2, 2, rivet);
-  // blocky "?" glyph
-  const ink = 0x7a4a08;
-  px(g, ox + 11, 8, 9, 3, ink); // top bar
-  px(g, ox + 18, 10, 3, 5, ink); // upper-right
-  px(g, ox + 12, 14, 7, 3, ink); // middle
-  px(g, ox + 14, 16, 3, 5, ink); // stem
-  px(g, ox + 14, 24, 3, 3, ink); // dot
+  const rivet = 0x7a5310;
+  px(g, ox + 4, 4, 2, 2, rivet);
+  px(g, ox + 26, 4, 2, 2, rivet);
+  px(g, ox + 4, 26, 2, 2, rivet);
+  px(g, ox + 26, 26, 2, 2, rivet);
+  // blocky "?" glyph with a soft drop shadow
+  const ink = 0x6e4408;
+  const lit = 0xfff4d0;
+  const glyph = (c: number, dx: number, dy: number) => {
+    px(g, ox + 11 + dx, 8 + dy, 9, 3, c);
+    px(g, ox + 18 + dx, 10 + dy, 3, 5, c);
+    px(g, ox + 12 + dx, 14 + dy, 7, 3, c);
+    px(g, ox + 14 + dx, 16 + dy, 3, 5, c);
+    px(g, ox + 14 + dx, 24 + dy, 3, 3, c);
+  };
+  glyph(ink, 1, 1); // shadow
+  glyph(lit, 0, 0); // glyph
 }
 
 function paintUsed(g: Phaser.GameObjects.Graphics, ox: number): void {
@@ -188,60 +203,98 @@ function createTileset(scene: Phaser.Scene): void {
   g.destroy();
 }
 
-/** Vertical gradient sky filling the whole viewport (static parallax base). */
+/** Bright gradient sky with a soft sun glow in the upper area. */
 function createSky(scene: Phaser.Scene): void {
   if (scene.textures.exists(TextureKeys.Sky)) return;
   const g = scene.make.graphics({ x: 0, y: 0 }, false);
-  const top = Phaser.Display.Color.ValueToColor(0x4a86d6);
-  const bottom = Phaser.Display.Color.ValueToColor(0xcdeffc);
+  const top = Phaser.Display.Color.ValueToColor(0x49b6ef); // vivid sky blue
+  const bottom = Phaser.Display.Color.ValueToColor(0xcde8c0); // pale green haze
   for (let y = 0; y < GAME_HEIGHT; y++) {
     const t = y / (GAME_HEIGHT - 1);
-    const c = Phaser.Display.Color.Interpolate.ColorWithColor(
-      top,
-      bottom,
-      100,
-      Math.floor(t * 100)
-    );
+    const c = Phaser.Display.Color.Interpolate.ColorWithColor(top, bottom, 100, Math.floor(t * 100));
     px(g, 0, y, GAME_WIDTH, 1, Phaser.Display.Color.GetColor(c.r, c.g, c.b));
   }
+  // Soft sun glow (stacked translucent circles) in the upper-right.
+  const sx = GAME_WIDTH * 0.72;
+  const sy = GAME_HEIGHT * 0.26;
+  for (let i = 6; i >= 1; i--) {
+    g.fillStyle(0xffffff, 0.05);
+    g.fillCircle(sx, sy, i * 22);
+  }
+  g.fillStyle(0xffffff, 0.9);
+  g.fillCircle(sx, sy, 16);
   g.generateTexture(TextureKeys.Sky, GAME_WIDTH, GAME_HEIGHT);
   g.destroy();
 }
 
-/** Draw a seamless rolling-hills silhouette (matching edges so it tiles). */
-function createHills(
+/** Soft diagonal god-rays on a transparent strip (drawn additively in-scene). */
+function createRays(scene: Phaser.Scene): void {
+  if (scene.textures.exists(TextureKeys.Rays)) return;
+  const w = 512;
+  const h = GAME_HEIGHT;
+  const g = scene.make.graphics({ x: 0, y: 0 }, false);
+  const slant = 90; // horizontal offset from top to bottom (diagonal beams)
+  const beams = [
+    { x: 40, width: 26 }, { x: 150, width: 40 }, { x: 250, width: 20 },
+    { x: 340, width: 48 }, { x: 450, width: 30 },
+  ];
+  for (const b of beams) {
+    g.fillStyle(0xffffff, 0.10);
+    // a parallelogram from top to bottom, slanted right
+    g.fillPoints(
+      [
+        { x: b.x, y: 0 },
+        { x: b.x + b.width, y: 0 },
+        { x: b.x + b.width + slant, y: h },
+        { x: b.x + slant, y: h },
+      ],
+      true
+    );
+  }
+  g.generateTexture(TextureKeys.Rays, w, h);
+  g.destroy();
+}
+
+/**
+ * Fluffy foliage layer: a row of overlapping bumps (circle clusters) with a
+ * lighter top rim and a darker base, built periodically so it tiles seamlessly.
+ */
+function createFoliageLayer(
   scene: Phaser.Scene,
   key: string,
   width: number,
   height: number,
   baseY: number,
-  amp: number,
-  periods: number,
-  color: number,
-  topEdge: number
+  bumpR: number,
+  spacing: number,
+  body: number,
+  rim: number,
+  shadow: number
 ): void {
   if (scene.textures.exists(key)) return;
   const g = scene.make.graphics({ x: 0, y: 0 }, false);
-  const pts: Phaser.Types.Math.Vector2Like[] = [];
-  for (let x = 0; x <= width; x += 4) {
-    const y =
-      baseY - amp * (0.5 + 0.5 * Math.sin((2 * Math.PI * periods * x) / width));
-    pts.push({ x, y });
+
+  // Solid body below the bump line.
+  px(g, 0, baseY, width, height - baseY, body);
+
+  // Bumpy crown — main bumps plus smaller in-between bumps (periodic => tiles).
+  const drawBumps = (r: number, yOff: number, color: number, phase: number) => {
+    g.fillStyle(color, 1);
+    for (let x = -spacing; x <= width + spacing; x += spacing) {
+      g.fillCircle(x + phase, baseY + yOff, r);
+    }
+  };
+  drawBumps(bumpR, 0, body, 0);
+  drawBumps(bumpR * 0.7, 2, body, spacing / 2);
+  // Lighter rim caps sitting just above the bumps.
+  drawBumps(bumpR - 4, -4, rim, 0);
+  drawBumps(bumpR * 0.7 - 3, -2, rim, spacing / 2);
+
+  // Soft shadow gradient toward the bottom for depth.
+  for (let i = 0; i < 8; i++) {
+    g.fillStyle(shadow, 0.06);
+    g.fillRect(0, height - (i + 1) * 6, width, 6);
   }
-  pts.push({ x: width, y: height });
-  pts.push({ x: 0, y: height });
-  g.fillStyle(color, 1);
-  g.fillPoints(pts, true);
-  // lighter rim along the crest for a touch of depth
-  g.lineStyle(2, topEdge, 1);
-  g.beginPath();
-  for (let x = 0; x <= width; x += 4) {
-    const y =
-      baseY - amp * (0.5 + 0.5 * Math.sin((2 * Math.PI * periods * x) / width));
-    if (x === 0) g.moveTo(x, y);
-    else g.lineTo(x, y);
-  }
-  g.strokePath();
   g.generateTexture(key, width, height);
   g.destroy();
 }
@@ -250,17 +303,20 @@ function createHills(
 function createCoin(scene: Phaser.Scene): void {
   if (scene.textures.exists(TextureKeys.Coin)) return;
   const g = scene.make.graphics({ x: 0, y: 0 }, false);
-  const r = 10;
-  g.fillStyle(0xc8941f, 1); // outer rim
+  const r = 11;
+  g.fillStyle(0xb8830f, 1); // dark rim
   g.fillCircle(r, r, r);
-  g.fillStyle(0xf2c14e, 1); // face
+  g.fillStyle(0xffd24a, 1); // gold face
   g.fillCircle(r, r, r - 2);
-  g.fillStyle(0xffe08a, 1); // inner sheen
-  g.fillCircle(r, r, r - 5);
-  g.fillStyle(0xc8941f, 1); // engraved center bar
-  g.fillRect(r - 1, 4, 2, 12);
-  g.fillStyle(0xffffff, 0.8); // glint
-  g.fillCircle(r - 3, r - 3, 1.5);
+  // glossy vertical gradient: brighter toward the top
+  g.fillStyle(0xffe88f, 1);
+  g.fillEllipse(r, r - 2, (r - 3) * 2, (r - 5) * 2);
+  g.fillStyle(0xd99a17, 1); // engraved center bar
+  g.fillRect(r - 1, 5, 2, 12);
+  g.fillStyle(0xffffff, 0.95); // bright specular highlight (top-left)
+  g.fillEllipse(r - 3, r - 4, 5, 7);
+  g.fillStyle(0xffffff, 0.6);
+  g.fillCircle(r + 3, r + 3, 1.4); // small secondary glint
   g.generateTexture(TextureKeys.Coin, r * 2, r * 2);
   g.destroy();
 }
@@ -464,8 +520,10 @@ function createParticleTextures(scene: Phaser.Scene): void {
 export function createWorldTextures(scene: Phaser.Scene): void {
   createTileset(scene);
   createSky(scene);
-  createHills(scene, TextureKeys.HillsFar, 384, 200, 150, 50, 3, 0x9ec7a8, 0xb6d9bf);
-  createHills(scene, TextureKeys.HillsNear, 384, 220, 200, 80, 2, 0x5fa05f, 0x7bc07b);
+  createRays(scene);
+  // Distant, hazy foliage then closer, richer foliage (both tileable).
+  createFoliageLayer(scene, TextureKeys.HillsFar, 512, 220, 96, 46, 64, 0x8fd49a, 0xb6ecc0, 0x3f7a52);
+  createFoliageLayer(scene, TextureKeys.HillsNear, 512, 240, 120, 60, 80, 0x57b15f, 0x86d98a, 0x2c6a39);
   createBeacon(scene);
   createCoin(scene);
   createGrowcap(scene);

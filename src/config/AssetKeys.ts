@@ -23,9 +23,10 @@ export type SceneKey = (typeof SceneKeys)[keyof typeof SceneKeys];
  */
 export const TextureKeys = {
   Tiles: "tex_tiles", // terrain tileset (grid of 32px tiles)
-  Sky: "tex_sky", // parallax: static gradient sky
-  HillsFar: "tex_hills_far", // parallax: distant hills (tiled)
-  HillsNear: "tex_hills_near", // parallax: closer hills (tiled)
+  Sky: "tex_sky", // parallax: static gradient sky + sun glow
+  Rays: "tex_rays", // parallax: soft god-ray light beams (additive)
+  HillsFar: "tex_hills_far", // parallax: distant foliage (tiled)
+  HillsNear: "tex_hills_near", // parallax: closer foliage (tiled)
   Beacon: "tex_beacon", // level-end goal marker
   // Interactive entities (standalone sprite textures)
   LuckyBlock: "tex_lucky", // "?" block (active)
