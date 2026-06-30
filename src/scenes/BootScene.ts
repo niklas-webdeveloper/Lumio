@@ -22,6 +22,7 @@ export class BootScene extends Phaser.Scene {
         fonts.load("700 16px Fredoka"),
         fonts.load("400 16px Nunito"),
         fonts.load("800 16px Nunito"),
+        fonts.load("400 16px Curvilinious"),
       ])
         .then(() => fonts.ready)
         .then(go)

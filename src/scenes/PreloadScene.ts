@@ -3,6 +3,7 @@ import { SceneKeys } from "@/config/AssetKeys";
 import { GAME_WIDTH, GAME_HEIGHT, applyDesignViewport } from "@/config/GameConfig";
 import { createWorldTextures } from "@/systems/TextureFactory";
 import { loadHeroAssets, registerHeroAnimations } from "@/config/characterAssets";
+import { loadUiAssets } from "@/config/uiAssets";
 
 /**
  * PreloadScene: loads all game assets and shows a progress bar.
@@ -19,6 +20,7 @@ export class PreloadScene extends Phaser.Scene {
     this.createProgressBar();
     this.load.audio("bgm", "assets/audio/music/hadouken.mp3");
     loadHeroAssets(this); // character sprite sheets + portrait
+    loadUiAssets(this); // sliced UI sprites (panels, buttons, stars)
   }
 
   create(): void {

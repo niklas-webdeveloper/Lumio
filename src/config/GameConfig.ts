@@ -20,7 +20,9 @@ export const CANVAS_HEIGHT = GAME_HEIGHT * RENDER_SCALE; // 1080
 
 /** Modern font stacks (self-hosted; see public/assets/fonts/fonts.css). */
 export const Fonts = {
-  /** Rounded display font for titles / big numbers. */
+  /** Hand-drawn game font (matches the UI art kit) for titles/labels. */
+  title: "'Curvilinious', 'Fredoka', sans-serif",
+  /** Rounded display font for big numbers / secondary headings. */
   display: "'Fredoka', 'Trebuchet MS', sans-serif",
   /** Clean UI/body font. */
   body: "'Nunito', 'Segoe UI', sans-serif",

@@ -255,7 +255,7 @@ export class GameScene extends Phaser.Scene {
       this.player.bounce();
       gameState.addScore(Progression.STOMP_SCORE);
       this.particles.stompPuff(enemy.x, eb.bottom);
-      this.cameraManager.shake();
+      // No camera shake on stomp — it happens often and hurt the smooth feel.
       audioManager.play("stomp");
     } else {
       this.damagePlayer();
@@ -362,13 +362,17 @@ export class GameScene extends Phaser.Scene {
 
     const bonus = gameState.awardTimeBonus();
     const lastLevel = gameState.levelIndex >= LEVEL_COUNT - 1;
+    // Star rating from how much time was left (speed of clear).
+    const ratio = gameState.timeLeft / Progression.LEVEL_TIME;
+    const stars = ratio > 0.6 ? 3 : ratio > 0.33 ? 2 : 1;
     saveState.unlockLevel(Math.min(gameState.levelIndex + 1, LEVEL_COUNT - 1));
+    saveState.recordLevelStars(gameState.levelIndex, stars);
     saveState.recordScore(gameState.score);
 
     this.time.delayedCall(COMPLETE_DELAY, () => {
       fadeOutThen(this, () => {
         this.scene.stop(SceneKeys.UI);
-        this.scene.start(SceneKeys.LevelComplete, { bonus, lastLevel });
+        this.scene.start(SceneKeys.LevelComplete, { bonus, lastLevel, stars });
       });
     });
   }

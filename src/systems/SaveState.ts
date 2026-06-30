@@ -10,12 +10,15 @@ export interface SaveData {
   unlockedLevel: number;
   highScore: number;
   muted: boolean;
+  /** Best star rating (0..3) earned per level index. */
+  levelStars: number[];
 }
 
 const DEFAULT_SAVE: SaveData = {
   unlockedLevel: 0,
   highScore: 0,
   muted: false,
+  levelStars: [],
 };
 
 class SaveState {
@@ -69,6 +72,22 @@ class SaveState {
 
   getHighScore(): number {
     return this.load().highScore;
+  }
+
+  /** Best stars earned for a level (0 if never cleared). */
+  getLevelStars(index: number): number {
+    return this.load().levelStars[index] ?? 0;
+  }
+
+  /** Record a star rating for a level, keeping the best. Returns true if improved. */
+  recordLevelStars(index: number, stars: number): boolean {
+    const data = this.load();
+    if (stars > (data.levelStars[index] ?? 0)) {
+      data.levelStars[index] = stars;
+      this.persist();
+      return true;
+    }
+    return false;
   }
 
   isMuted(): boolean {

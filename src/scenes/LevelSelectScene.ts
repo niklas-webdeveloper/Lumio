@@ -1,31 +1,33 @@
 import Phaser from "phaser";
 import { SceneKeys } from "@/config/AssetKeys";
-import { GAME_WIDTH, applyDesignViewport } from "@/config/GameConfig";
+import { GAME_WIDTH, applyDesignViewport, Fonts } from "@/config/GameConfig";
 import { LEVELS } from "@/config/levels";
+import { UiTex, starsTexture } from "@/config/uiAssets";
 import { gameState } from "@/systems/GameState";
 import { saveState } from "@/systems/SaveState";
 import { MenuBackdrop } from "@/systems/MenuBackdrop";
-import { createButton } from "@/systems/UiButton";
+import { createIconButton } from "@/systems/IconButton";
 import { fadeIn, fadeOutThen } from "@/systems/transition";
 
-interface Card {
+const SLOT_W = 112;
+const SLOT_H = 100;
+const SLOT_GAP = 26;
+
+interface Slot {
   container: Phaser.GameObjects.Container;
-  graphics: Phaser.GameObjects.Graphics;
+  x: number;
   locked: boolean;
 }
 
-const CARD_W = 128;
-const CARD_H = 156;
-const CARD_GAP = 22;
-
 /**
- * Level select: one card per level, unlocked progressively (level 1 is always
- * open; finishing a level unlocks the next). Navigable by mouse or keyboard
- * (←/→ to choose, Enter to play, Esc to go back).
+ * Level select built from the UI art kit: the LEVELS title plate and a row of
+ * level slots showing the number, earned star rating, and lock state. Navigable
+ * by mouse or keyboard (←/→, Enter, Esc); the selection is highlighted.
  */
 export class LevelSelectScene extends Phaser.Scene {
   private backdrop!: MenuBackdrop;
-  private cards: Card[] = [];
+  private slots: Slot[] = [];
+  private ring!: Phaser.GameObjects.Graphics;
   private selected = 0;
   private unlocked = 0;
 
@@ -37,44 +39,31 @@ export class LevelSelectScene extends Phaser.Scene {
     applyDesignViewport(this);
     fadeIn(this);
     this.backdrop = new MenuBackdrop(this);
-    this.cards = [];
+    this.slots = [];
     this.unlocked = saveState.getUnlockedLevel();
     this.selected = Math.min(this.unlocked, LEVELS.length - 1);
 
-    this.add
-      .text(GAME_WIDTH / 2, 48, "SELECT LEVEL", {
-        fontFamily: "'Fredoka', sans-serif",
-        fontSize: "38px",
-        color: "#ffffff",
-        fontStyle: "700",
-        stroke: "#16608a",
-        strokeThickness: 7,
-      })
-      .setOrigin(0.5)
-      .setShadow(0, 4, "#0007", 8);
+    this.add.image(GAME_WIDTH / 2, 58, UiTex.plateLevels).setDisplaySize(300, 92);
 
-    const totalW = LEVELS.length * CARD_W + (LEVELS.length - 1) * CARD_GAP;
-    const startX = (GAME_WIDTH - totalW) / 2 + CARD_W / 2;
+    this.ring = this.add.graphics();
+
+    const total = LEVELS.length * SLOT_W + (LEVELS.length - 1) * SLOT_GAP;
+    const startLeft = (GAME_WIDTH - total) / 2;
     LEVELS.forEach((level, i) => {
-      this.cards.push(
-        this.createCard(startX + i * (CARD_W + CARD_GAP), 168, i, level.title)
-      );
+      const cx = startLeft + SLOT_W / 2 + i * (SLOT_W + SLOT_GAP);
+      this.slots.push(this.createSlot(cx, 188, i, level.title));
     });
 
-    createButton(this, 84, 322, {
-      width: 130,
-      height: 42,
-      label: "Back",
-      fontSize: 16,
-      color: 0x2a7d9c,
-      hoverColor: 0x3a9cc0,
+    createIconButton(this, 56, 318, UiTex.btnBack, {
+      size: 54,
       onClick: () => this.back(),
     });
     this.add
-      .text(GAME_WIDTH - 12, 332, "Arrows choose - Enter play - Esc back", {
-        fontFamily: "'Nunito', sans-serif",
-        fontSize: "11px",
-        color: "#dbeef5",
+      .text(GAME_WIDTH - 12, 322, "←/→ choose   Enter play   Esc back", {
+        fontFamily: Fonts.body,
+        fontSize: "12px",
+        color: "#aebbd0",
+        fontStyle: "600",
       })
       .setOrigin(1, 0.5);
 
@@ -86,88 +75,88 @@ export class LevelSelectScene extends Phaser.Scene {
     this.backdrop.update(this.cameras.main);
   }
 
-  private createCard(x: number, y: number, index: number, title: string): Card {
+  private createSlot(cx: number, cy: number, index: number, title: string): Slot {
     const locked = index > this.unlocked;
-    const container = this.add.container(x, y);
-    const graphics = this.add.graphics();
+    const container = this.add.container(cx, cy);
 
-    const numText = this.add
-      .text(0, -44, `${index + 1}`, {
-        fontFamily: "'Fredoka', sans-serif",
-        fontSize: "48px",
-        color: "#ffffff",
+    const slot = this.add.image(0, 0, UiTex.slot).setDisplaySize(SLOT_W, SLOT_H);
+    if (locked) slot.setTint(0x4a4a55);
+    container.add(slot);
+
+    container.add(
+      this.add
+        .text(0, -22, `${index + 1}`, {
+          fontFamily: Fonts.title,
+          fontSize: "44px",
+          color: locked ? "#8a8a96" : "#ffffff",
+        })
+        .setOrigin(0.5)
+        .setShadow(0, 3, "#0007", 4)
+    );
+
+    if (locked) {
+      container.add(
+        this.add
+          .text(0, 30, "LOCKED", {
+            fontFamily: Fonts.body,
+            fontSize: "12px",
+            color: "#c7c7d2",
+            fontStyle: "800",
+          })
+          .setOrigin(0.5)
+      );
+    } else {
+      // Earned star rating beneath the number.
+      const stars = saveState.getLevelStars(index);
+      container.add(
+        this.add.image(0, 30, starsTexture(stars)).setDisplaySize(74, 26)
+      );
+    }
+
+    const title2 = this.add
+      .text(0, SLOT_H / 2 + 12, title, {
+        fontFamily: Fonts.body,
+        fontSize: "12px",
+        color: locked ? "#9aa3b5" : "#dfe8f5",
         fontStyle: "700",
       })
       .setOrigin(0.5);
-    const nameText = this.add
-      .text(0, 6, title, {
-        fontFamily: "'Nunito', sans-serif",
-        fontSize: "13px",
-        color: "#ffffff",
-        align: "center",
-        wordWrap: { width: CARD_W - 18 },
-      })
-      .setOrigin(0.5);
-    const status = this.add
-      .text(0, 52, locked ? "LOCKED" : index < this.unlocked ? "CLEARED" : "PLAY", {
-        fontFamily: "'Nunito', sans-serif",
-        fontSize: "13px",
-        color: locked ? "#dfe6ee" : "#eaffef",
-        fontStyle: "bold",
-      })
-      .setOrigin(0.5);
+    container.add(title2);
 
-    container.add([graphics, numText, nameText, status]);
-    container.setSize(CARD_W, CARD_H);
+    container.setSize(SLOT_W, SLOT_H);
     container.setInteractive(
-      new Phaser.Geom.Rectangle(-CARD_W / 2, -CARD_H / 2, CARD_W, CARD_H),
+      new Phaser.Geom.Rectangle(-SLOT_W / 2, -SLOT_H / 2, SLOT_W, SLOT_H),
       Phaser.Geom.Rectangle.Contains
     );
     container.on("pointerover", () => this.select(index));
     container.on("pointerdown", () => this.tryPlay(index));
 
-    return { container, graphics, locked };
-  }
-
-  /** Redraw a card's background to reflect locked + selected state. */
-  private drawCard(card: Card, selected: boolean): void {
-    const g = card.graphics;
-    const w = CARD_W;
-    const h = CARD_H;
-    const base = card.locked ? 0x66707e : 0x2f9e54;
-    const top = card.locked ? 0x7e8896 : 0x46c06c;
-    g.clear();
-    g.fillStyle(0x000000, 0.28);
-    g.fillRoundedRect(-w / 2 + 3, -h / 2 + 5, w, h, 16);
-    g.fillStyle(base, 1);
-    g.fillRoundedRect(-w / 2, -h / 2, w, h, 16);
-    g.fillStyle(top, 1); // header band
-    g.fillRoundedRect(-w / 2, -h / 2, w, h / 2, 16);
-    g.fillStyle(0xffffff, 0.18); // gloss
-    g.fillRoundedRect(-w / 2 + 5, -h / 2 + 5, w - 10, 26, 10);
-    const borderColor = selected ? 0xffe14a : 0xffffff;
-    g.lineStyle(selected ? 5 : 3, borderColor, selected ? 1 : 0.85);
-    g.strokeRoundedRect(-w / 2, -h / 2, w, h, 16);
-    card.container.setScale(selected ? 1.06 : 1);
+    return { container, x: cx, locked };
   }
 
   private refresh(): void {
-    this.cards.forEach((c, i) => this.drawCard(c, i === this.selected));
+    this.slots.forEach((s, i) => s.container.setScale(i === this.selected ? 1.08 : 1));
+    // Bright selection ring around the active slot.
+    const s = this.slots[this.selected];
+    const w = SLOT_W * 1.08 + 12;
+    const h = SLOT_H * 1.08 + 12;
+    this.ring.clear();
+    this.ring.lineStyle(5, 0xffe14a, 1);
+    this.ring.strokeRoundedRect(s.x - w / 2, 188 - h / 2, w, h, 16);
   }
 
   private select(index: number): void {
-    this.selected = Phaser.Math.Clamp(index, 0, this.cards.length - 1);
+    this.selected = Phaser.Math.Clamp(index, 0, this.slots.length - 1);
     this.refresh();
   }
 
   private tryPlay(index: number): void {
-    const card = this.cards[index];
+    const slot = this.slots[index];
     this.select(index);
-    if (card.locked) {
-      // Nudge to signal it's locked.
+    if (slot.locked) {
       this.tweens.add({
-        targets: card.container,
-        x: card.container.x + 6,
+        targets: slot.container,
+        x: slot.x + 6,
         duration: 50,
         yoyo: true,
         repeat: 3,

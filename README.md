@@ -195,6 +195,9 @@ Phaser's sound manager. Mute (M) and the persisted setting still apply.
 - **Player character** — "2D Pixel Art Character Animated Sprite Pack" by
   **Kibyra** (https://kibyra.itch.io). Used under the pack's license (personal &
   commercial use and edits allowed; redistribution of the pack itself is not).
+- **UI art kit** — project-supplied panel/button/star sprite sheets
+  (`assetsheets/`), sliced into `public/assets/ui/`, plus the "Curvilinious"
+  display font. Used for the menus, level select and dialogs.
 - **World art & SFX** — original, generated procedurally in code.
 - **Music** — `public/assets/audio/music/hadouken.mp3` (project-supplied).
 

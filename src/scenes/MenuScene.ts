@@ -1,15 +1,17 @@
 import Phaser from "phaser";
 import { SceneKeys } from "@/config/AssetKeys";
-import { GAME_WIDTH, GAME_HEIGHT, applyDesignViewport } from "@/config/GameConfig";
+import { GAME_WIDTH, GAME_HEIGHT, applyDesignViewport, Fonts } from "@/config/GameConfig";
 import { HeroPortrait } from "@/config/characterAssets";
+import { UiTex } from "@/config/uiAssets";
 import { saveState } from "@/systems/SaveState";
 import { MenuBackdrop } from "@/systems/MenuBackdrop";
-import { createButton } from "@/systems/UiButton";
+import { createIconButton } from "@/systems/IconButton";
 import { fadeIn, fadeOutThen } from "@/systems/transition";
 
 /**
- * Home screen: sleek modern gradient backdrop, the character portrait, a big PLAY
- * button leading to the level select, and the persisted high score.
+ * Home screen: sleek gradient backdrop, the (kept) character portrait, a big
+ * PLAY button into the level select, plus quick settings/info — styled with the
+ * provided UI art kit and the hand-drawn title font.
  */
 export class MenuScene extends Phaser.Scene {
   private backdrop!: MenuBackdrop;
@@ -25,84 +27,107 @@ export class MenuScene extends Phaser.Scene {
 
     const cx = GAME_WIDTH / 2;
 
-    // Title with a soft shadow.
     this.add
-      .text(cx, 70, "LUMIO'S LEAP", {
-        fontFamily: "'Fredoka', sans-serif",
-        fontSize: "52px",
+      .text(cx, 64, "LUMIO'S LEAP", {
+        fontFamily: Fonts.title,
+        fontSize: "58px",
         color: "#ffffff",
-        fontStyle: "700",
-        stroke: "#16608a",
-        strokeThickness: 8,
       })
       .setOrigin(0.5)
-      .setShadow(0, 6, "#0008", 10);
+      .setStroke("#3a2c63", 10)
+      .setShadow(0, 6, "#0009", 12);
     this.add
-      .text(cx, 108, "a bright platforming adventure", {
-        fontFamily: "'Nunito', sans-serif",
+      .text(cx, 104, "a bright platforming adventure", {
+        fontFamily: Fonts.body,
         fontSize: "13px",
-        color: "#dbeef5",
+        color: "#cdd9ec",
+        fontStyle: "600",
       })
       .setOrigin(0.5);
 
-    // Character portrait on a soft disc, gently bobbing.
-    const discX = cx - 150;
-    const discY = 230;
-    this.add.circle(discX, discY + 10, 74, 0x000000, 0.18); // soft shadow disc
-    this.add.circle(discX, discY, 70, 0x8fe0ff, 0.12); // soft glow
-    const hero = this.add.image(discX, discY, HeroPortrait.key).setScale(1.25);
+    // Character portrait (kept) on a soft glow disc, gently bobbing.
+    const px = cx - 150;
+    const py = 232;
+    this.add.circle(px, py + 12, 78, 0x000000, 0.22);
+    this.add.circle(px, py, 74, 0x8fe0ff, 0.12);
+    const hero = this.add.image(px, py, HeroPortrait.key).setScale(1.35);
     this.tweens.add({
       targets: hero,
-      y: discY - 8,
-      duration: 1400,
+      y: py - 9,
+      duration: 1500,
       yoyo: true,
       repeat: -1,
       ease: "Sine.inOut",
     });
 
-    // Primary actions.
-    const btnX = cx + 110;
-    createButton(this, btnX, 195, {
-      width: 230,
-      height: 66,
-      label: "PLAY",
-      fontSize: 26,
-      onClick: () => this.goToLevelSelect(),
+    // Big PLAY button + high score.
+    createIconButton(this, cx + 120, 196, UiTex.btnPlay, {
+      size: 120,
+      onClick: () => this.start(),
     });
-    createButton(this, btnX, 272, {
-      width: 230,
-      height: 50,
-      label: `High Score  ${saveState.getHighScore()}`,
-      fontSize: 16,
-      color: 0x2a7d9c,
-      hoverColor: 0x2a7d9c,
-      onClick: () => this.goToLevelSelect(),
+    this.add
+      .text(cx + 120, 268, "PLAY", {
+        fontFamily: Fonts.body,
+        fontSize: "26px",
+        color: "#ffffff",
+        fontStyle: "800",
+      })
+      .setOrigin(0.5)
+      .setShadow(0, 3, "#0007", 4);
+    this.add
+      .text(cx + 120, 304, `High Score   ${saveState.getHighScore()}`, {
+        fontFamily: Fonts.body,
+        fontSize: "15px",
+        color: "#ffe6a8",
+        fontStyle: "700",
+      })
+      .setOrigin(0.5);
+
+    // Quick settings / info in the top-right corner.
+    createIconButton(this, GAME_WIDTH - 36, 34, UiTex.btnInfo, {
+      size: 44,
+      onClick: () => this.showInfo(),
     });
 
     this.add
-      .text(cx, GAME_HEIGHT - 28, "Press SPACE / ENTER to play", {
-        fontFamily: "'Nunito', sans-serif",
-        fontSize: "13px",
-        color: "#dbeef5",
+      .text(cx, GAME_HEIGHT - 18, "Press SPACE / ENTER to play", {
+        fontFamily: Fonts.body,
+        fontSize: "12px",
+        color: "#aebbd0",
       })
       .setOrigin(0.5);
     this.add
-      .text(GAME_WIDTH - 6, GAME_HEIGHT - 6, "character by Kibyra", {
-        fontFamily: "'Nunito', sans-serif",
+      .text(GAME_WIDTH - 6, GAME_HEIGHT - 5, "character by Kibyra · UI kit", {
+        fontFamily: Fonts.body,
         fontSize: "9px",
-        color: "#dbeef5aa",
+        color: "#8294ad",
       })
       .setOrigin(1, 1);
 
-    this.input.keyboard?.once("keydown-SPACE", () => this.goToLevelSelect());
-    this.input.keyboard?.once("keydown-ENTER", () => this.goToLevelSelect());
+    this.input.keyboard?.once("keydown-SPACE", () => this.start());
+    this.input.keyboard?.once("keydown-ENTER", () => this.start());
   }
 
   override update(): void {
-    this.backdrop.update(this.cameras.main); // keep the god-rays drifting
+    this.backdrop.update(this.cameras.main);
   }
 
-  private goToLevelSelect(): void {
+  private start(): void {
     fadeOutThen(this, () => this.scene.start(SceneKeys.LevelSelect));
+  }
+
+  private showInfo(): void {
+    // Lightweight toast; a full settings panel could use panel_config.
+    const t = this.add
+      .text(GAME_WIDTH / 2, 150, "Arrows/WASD move · Space jump (x2!) · Shift run", {
+        fontFamily: Fonts.body,
+        fontSize: "13px",
+        color: "#ffffff",
+        backgroundColor: "#0008",
+        padding: { x: 10, y: 6 },
+      })
+      .setOrigin(0.5)
+      .setDepth(50);
+    this.tweens.add({ targets: t, alpha: 0, delay: 1800, duration: 500, onComplete: () => t.destroy() });
   }
 }
