@@ -3,7 +3,7 @@ import { SceneKeys } from "@/config/AssetKeys";
 import { GAME_WIDTH, GAME_HEIGHT, applyDesignViewport } from "@/config/GameConfig";
 import { createWorldTextures } from "@/systems/TextureFactory";
 import { loadHeroAssets, registerHeroAnimations } from "@/config/characterAssets";
-import { loadUiAssets } from "@/config/uiAssets";
+import { ui } from "@/ui/UIManager";
 
 /**
  * PreloadScene: loads all game assets and shows a progress bar.
@@ -20,15 +20,14 @@ export class PreloadScene extends Phaser.Scene {
     this.createProgressBar();
     this.load.audio("bgm", "assets/audio/music/hadouken.mp3");
     loadHeroAssets(this); // character sprite sheets + portrait
-    loadUiAssets(this); // sliced UI sprites (panels, buttons, stars)
   }
 
   create(): void {
-    // Generate procedural world art + register the character's animations,
-    // so every later scene can use them by key.
+    // Generate procedural world art + register the character's animations.
     createWorldTextures(this);
     registerHeroAnimations(this);
-    this.scene.start(SceneKeys.Menu);
+    // Menus/HUD are the DOM UI layer — hand off to its home screen.
+    ui.showHome();
   }
 
   /** Minimal, dependency-free loading bar drawn with the Graphics API. */

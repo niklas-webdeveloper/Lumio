@@ -27,6 +27,7 @@ import { gameState, Progression } from "@/systems/GameState";
 import { saveState } from "@/systems/SaveState";
 import { audioManager } from "@/systems/AudioManager";
 import { fadeIn, fadeOutThen } from "@/systems/transition";
+import { ui } from "@/ui/UIManager";
 
 /** Render depths so gameplay sorts correctly above the parallax background. */
 const Depth = {
@@ -67,8 +68,6 @@ export class GameScene extends Phaser.Scene {
 
   private failed = false;
   private levelComplete = false;
-  /** Guards one-time binding of Systems pause/resume events across restarts. */
-  private pauseEventsBound = false;
 
   constructor() {
     super(SceneKeys.Game);
@@ -78,8 +77,8 @@ export class GameScene extends Phaser.Scene {
     this.failed = false;
     this.levelComplete = false;
 
-    // HUD overlay (launched once; survives level restarts).
-    if (!this.scene.isActive(SceneKeys.UI)) this.scene.launch(SceneKeys.UI);
+    // DOM HUD + level title card (the UI layer owns the HUD).
+    ui.onGameSceneCreate();
 
     // --- Level geometry ---
     this.level = new LevelLoader().load(this, getLevel(gameState.levelIndex)!);
@@ -114,10 +113,10 @@ export class GameScene extends Phaser.Scene {
     );
 
     gameState.startLevelTimer();
-    this.setupPauseControls();
     this.exposeTestApi();
 
-    this.bgm = this.sound.add("bgm", { loop: true, volume: audioManager.isMuted() ? 0 : 0.5 });
+    this.sound.mute = audioManager.isMuted(); // global mute drives the bgm
+    this.bgm = this.sound.add("bgm", { loop: true, volume: 0.5 });
     this.bgm.play();
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () =>
       this.bgm.stop()
@@ -138,7 +137,8 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
-    this.parallax.update(this.cameras.main);
+    if (this.cameras?.main) this.parallax.update(this.cameras.main);
+    ui.updateHud();
   }
 
   // ----- Spawning -----
@@ -342,11 +342,7 @@ export class GameScene extends Phaser.Scene {
     this.time.delayedCall(DEATH_DELAY, () => {
       const gameOver = gameState.loseLife();
       if (gameOver) {
-        saveState.recordScore(gameState.score);
-        fadeOutThen(this, () => {
-          this.scene.stop(SceneKeys.UI);
-          this.scene.start(SceneKeys.GameOver);
-        });
+        fadeOutThen(this, () => ui.showGameOver());
       } else {
         fadeOutThen(this, () => this.scene.restart());
       }
@@ -370,43 +366,13 @@ export class GameScene extends Phaser.Scene {
     saveState.recordScore(gameState.score);
 
     this.time.delayedCall(COMPLETE_DELAY, () => {
-      fadeOutThen(this, () => {
-        this.scene.stop(SceneKeys.UI);
-        this.scene.start(SceneKeys.LevelComplete, { bonus, lastLevel, stars });
-      });
+      fadeOutThen(this, () => ui.showComplete({ bonus, lastLevel, stars }));
     });
   }
 
-  // ----- Pause -----
-
-  private setupPauseControls(): void {
-    const pause = () => {
-      if (this.failed || this.levelComplete) return;
-      this.scene.launch(SceneKeys.Pause);
-      this.scene.pause();
-    };
-    // Keyboard listeners are cleared on scene shutdown, so re-add every create.
-    this.input.keyboard?.on("keydown-P", pause);
-    this.input.keyboard?.on("keydown-ESC", pause);
-    this.input.keyboard?.on("keydown-M", () => {
-      const isMuted = audioManager.toggleMute();
-      if (this.bgm) {
-        (this.bgm as Phaser.Sound.WebAudioSound).setVolume(isMuted ? 0 : 0.5);
-      }
-    });
-
-    // Disable this scene's keys while paused so the pause/resume keys don't
-    // double-fire across the two scenes. Systems events persist across restarts,
-    // so bind these only once; read the (recreated) keyboard plugin lazily.
-    if (!this.pauseEventsBound) {
-      this.pauseEventsBound = true;
-      this.events.on(Phaser.Scenes.Events.PAUSE, () => {
-        if (this.input.keyboard) this.input.keyboard.enabled = false;
-      });
-      this.events.on(Phaser.Scenes.Events.RESUME, () => {
-        if (this.input.keyboard) this.input.keyboard.enabled = true;
-      });
-    }
+  /** True if the player asked to pause this frame (P/Esc, handled by the UI). */
+  public get canPause(): boolean {
+    return !this.failed && !this.levelComplete;
   }
 
   /** Dev-only inspection hooks for the headless smoke tests (stripped in prod). */

@@ -6,13 +6,8 @@
 export const SceneKeys = {
   Boot: "BootScene",
   Preload: "PreloadScene",
-  Menu: "MenuScene",
-  LevelSelect: "LevelSelectScene",
   Game: "GameScene",
-  UI: "UIScene",
-  Pause: "PauseScene",
-  LevelComplete: "LevelCompleteScene",
-  GameOver: "GameOverScene",
+  // Menus, dialogs and the HUD are the DOM UI layer (src/ui/UIManager.ts).
 } as const;
 
 export type SceneKey = (typeof SceneKeys)[keyof typeof SceneKeys];

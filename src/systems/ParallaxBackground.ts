@@ -58,6 +58,8 @@ export class ParallaxBackground {
 
   /** Reposition layers to the camera's view and drive the parallax scroll. */
   update(camera: Phaser.Cameras.Scene2D.Camera): void {
+    // Guard against a torn-down camera during scene stop/restart transitions.
+    if (!camera || !camera.worldView) return;
     // worldView is the actual visible world rect (accounts for zoom + centerOn),
     // unlike scrollX which is offset under zoom.
     const view = camera.worldView;
