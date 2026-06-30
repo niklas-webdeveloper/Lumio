@@ -48,7 +48,7 @@ export function createButton(
 
   const label = scene.add
     .text(0, 0, opts.label, {
-      fontFamily: "'Nunito', sans-serif",
+      fontFamily: "'Fredoka', sans-serif",
       fontSize: `${opts.fontSize ?? 22}px`,
       color: opts.textColor ?? "#ffffff",
       fontStyle: "bold",

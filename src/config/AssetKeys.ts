@@ -26,6 +26,7 @@ export const TextureKeys = {
   Tiles: "tex_tiles", // terrain tileset (grid of 32px tiles)
   Sky: "tex_sky", // parallax: static gradient sky + sun glow
   Rays: "tex_rays", // parallax: soft god-ray light beams (additive)
+  MenuBg: "tex_menubg", // sleek modern gradient backdrop for menus
   HillsFar: "tex_hills_far", // parallax: distant foliage (tiled)
   HillsNear: "tex_hills_near", // parallax: closer foliage (tiled)
   Beacon: "tex_beacon", // level-end goal marker

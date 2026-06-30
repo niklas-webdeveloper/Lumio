@@ -227,6 +227,53 @@ function createSky(scene: Phaser.Scene): void {
   g.destroy();
 }
 
+/**
+ * Sleek, modern menu backdrop: a deep vertical gradient with soft glowing orbs
+ * (bokeh) and a gentle vignette — a clean, non-pixel look distinct from the
+ * gameplay world.
+ */
+function createMenuBackdrop(scene: Phaser.Scene): void {
+  if (scene.textures.exists(TextureKeys.MenuBg)) return;
+  const w = GAME_WIDTH;
+  const h = GAME_HEIGHT;
+  const g = scene.make.graphics({ x: 0, y: 0 }, false);
+
+  const top = Phaser.Display.Color.ValueToColor(0x141e3c); // deep indigo
+  const bottom = Phaser.Display.Color.ValueToColor(0x2f8aa3); // teal
+  for (let y = 0; y < h; y++) {
+    const t = y / (h - 1);
+    const c = Phaser.Display.Color.Interpolate.ColorWithColor(top, bottom, 100, Math.floor(t * 100));
+    px(g, 0, y, w, 1, Phaser.Display.Color.GetColor(c.r, c.g, c.b));
+  }
+
+  // Soft glowing orbs (layered translucent circles = blurry bokeh).
+  const orbs: Array<[number, number, number, number]> = [
+    [110, 80, 70, 0x4fd6c4],
+    [540, 70, 60, 0x5aa6ec],
+    [470, 300, 110, 0x37c8aa],
+    [70, 310, 60, 0x4a86e0],
+    [320, 150, 50, 0x6fe0d0],
+  ];
+  for (const [ox, oy, r, color] of orbs) {
+    for (let i = 5; i >= 1; i--) {
+      g.fillStyle(color, 0.05);
+      g.fillCircle(ox, oy, (r * i) / 3);
+    }
+  }
+
+  // Subtle vignette: darken the four edges.
+  for (let i = 0; i < 10; i++) {
+    g.fillStyle(0x0a1226, 0.05);
+    g.fillRect(0, i * 4, w, 4); // top
+    g.fillRect(0, h - (i + 1) * 4, w, 4); // bottom
+    g.fillRect(i * 4, 0, 4, h); // left
+    g.fillRect(w - (i + 1) * 4, 0, 4, h); // right
+  }
+
+  g.generateTexture(TextureKeys.MenuBg, w, h);
+  g.destroy();
+}
+
 /** Soft diagonal god-rays on a transparent strip (drawn additively in-scene). */
 function createRays(scene: Phaser.Scene): void {
   if (scene.textures.exists(TextureKeys.Rays)) return;
@@ -521,6 +568,7 @@ export function createWorldTextures(scene: Phaser.Scene): void {
   createTileset(scene);
   createSky(scene);
   createRays(scene);
+  createMenuBackdrop(scene);
   // Distant, hazy foliage then closer, richer foliage (both tileable).
   createFoliageLayer(scene, TextureKeys.HillsFar, 512, 220, 96, 46, 64, 0x8fd49a, 0xb6ecc0, 0x3f7a52);
   createFoliageLayer(scene, TextureKeys.HillsNear, 512, 240, 120, 60, 80, 0x57b15f, 0x86d98a, 0x2c6a39);

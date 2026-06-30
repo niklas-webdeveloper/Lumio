@@ -3,16 +3,16 @@ import { SceneKeys } from "@/config/AssetKeys";
 import { GAME_WIDTH, GAME_HEIGHT, applyDesignViewport } from "@/config/GameConfig";
 import { HeroPortrait } from "@/config/characterAssets";
 import { saveState } from "@/systems/SaveState";
-import { ParallaxBackground } from "@/systems/ParallaxBackground";
+import { MenuBackdrop } from "@/systems/MenuBackdrop";
 import { createButton } from "@/systems/UiButton";
 import { fadeIn, fadeOutThen } from "@/systems/transition";
 
 /**
- * Home screen: lush parallax backdrop, the character portrait, a big PLAY
+ * Home screen: sleek modern gradient backdrop, the character portrait, a big PLAY
  * button leading to the level select, and the persisted high score.
  */
 export class MenuScene extends Phaser.Scene {
-  private parallax!: ParallaxBackground;
+  private backdrop!: MenuBackdrop;
 
   constructor() {
     super(SceneKeys.Menu);
@@ -21,35 +21,36 @@ export class MenuScene extends Phaser.Scene {
   create(): void {
     applyDesignViewport(this);
     fadeIn(this);
-    this.parallax = new ParallaxBackground(this);
+    this.backdrop = new MenuBackdrop(this);
 
     const cx = GAME_WIDTH / 2;
 
     // Title with a soft shadow.
     this.add
       .text(cx, 70, "LUMIO'S LEAP", {
-        fontFamily: "'Nunito', sans-serif",
-        fontSize: "46px",
+        fontFamily: "'Fredoka', sans-serif",
+        fontSize: "52px",
         color: "#ffffff",
-        fontStyle: "bold",
-        stroke: "#1c6b8c",
+        fontStyle: "700",
+        stroke: "#16608a",
         strokeThickness: 8,
       })
       .setOrigin(0.5)
-      .setShadow(0, 4, "#00000055", 6);
+      .setShadow(0, 6, "#0008", 10);
     this.add
       .text(cx, 108, "a bright platforming adventure", {
         fontFamily: "'Nunito', sans-serif",
         fontSize: "13px",
-        color: "#0d3b4d",
+        color: "#dbeef5",
       })
       .setOrigin(0.5);
 
     // Character portrait on a soft disc, gently bobbing.
     const discX = cx - 150;
     const discY = 230;
-    this.add.circle(discX, discY + 6, 70, 0x0d3b4d, 0.18);
-    const hero = this.add.image(discX, discY, HeroPortrait.key).setScale(1.2);
+    this.add.circle(discX, discY + 10, 74, 0x000000, 0.18); // soft shadow disc
+    this.add.circle(discX, discY, 70, 0x8fe0ff, 0.12); // soft glow
+    const hero = this.add.image(discX, discY, HeroPortrait.key).setScale(1.25);
     this.tweens.add({
       targets: hero,
       y: discY - 8,
@@ -82,14 +83,14 @@ export class MenuScene extends Phaser.Scene {
       .text(cx, GAME_HEIGHT - 28, "Press SPACE / ENTER to play", {
         fontFamily: "'Nunito', sans-serif",
         fontSize: "13px",
-        color: "#0d3b4d",
+        color: "#dbeef5",
       })
       .setOrigin(0.5);
     this.add
       .text(GAME_WIDTH - 6, GAME_HEIGHT - 6, "character by Kibyra", {
         fontFamily: "'Nunito', sans-serif",
         fontSize: "9px",
-        color: "#0d3b4d99",
+        color: "#dbeef5aa",
       })
       .setOrigin(1, 1);
 
@@ -98,7 +99,7 @@ export class MenuScene extends Phaser.Scene {
   }
 
   override update(): void {
-    this.parallax.update(this.cameras.main); // keep the god-rays drifting
+    this.backdrop.update(this.cameras.main); // keep the god-rays drifting
   }
 
   private goToLevelSelect(): void {

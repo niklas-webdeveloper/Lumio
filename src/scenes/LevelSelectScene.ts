@@ -4,7 +4,7 @@ import { GAME_WIDTH, applyDesignViewport } from "@/config/GameConfig";
 import { LEVELS } from "@/config/levels";
 import { gameState } from "@/systems/GameState";
 import { saveState } from "@/systems/SaveState";
-import { ParallaxBackground } from "@/systems/ParallaxBackground";
+import { MenuBackdrop } from "@/systems/MenuBackdrop";
 import { createButton } from "@/systems/UiButton";
 import { fadeIn, fadeOutThen } from "@/systems/transition";
 
@@ -24,7 +24,7 @@ const CARD_GAP = 22;
  * (←/→ to choose, Enter to play, Esc to go back).
  */
 export class LevelSelectScene extends Phaser.Scene {
-  private parallax!: ParallaxBackground;
+  private backdrop!: MenuBackdrop;
   private cards: Card[] = [];
   private selected = 0;
   private unlocked = 0;
@@ -36,21 +36,22 @@ export class LevelSelectScene extends Phaser.Scene {
   create(): void {
     applyDesignViewport(this);
     fadeIn(this);
-    this.parallax = new ParallaxBackground(this);
+    this.backdrop = new MenuBackdrop(this);
     this.cards = [];
     this.unlocked = saveState.getUnlockedLevel();
     this.selected = Math.min(this.unlocked, LEVELS.length - 1);
 
     this.add
       .text(GAME_WIDTH / 2, 48, "SELECT LEVEL", {
-        fontFamily: "'Nunito', sans-serif",
-        fontSize: "34px",
+        fontFamily: "'Fredoka', sans-serif",
+        fontSize: "38px",
         color: "#ffffff",
-        fontStyle: "bold",
-        stroke: "#1c6b8c",
+        fontStyle: "700",
+        stroke: "#16608a",
         strokeThickness: 7,
       })
-      .setOrigin(0.5);
+      .setOrigin(0.5)
+      .setShadow(0, 4, "#0007", 8);
 
     const totalW = LEVELS.length * CARD_W + (LEVELS.length - 1) * CARD_GAP;
     const startX = (GAME_WIDTH - totalW) / 2 + CARD_W / 2;
@@ -73,7 +74,7 @@ export class LevelSelectScene extends Phaser.Scene {
       .text(GAME_WIDTH - 12, 332, "Arrows choose - Enter play - Esc back", {
         fontFamily: "'Nunito', sans-serif",
         fontSize: "11px",
-        color: "#0d3b4d",
+        color: "#dbeef5",
       })
       .setOrigin(1, 0.5);
 
@@ -82,7 +83,7 @@ export class LevelSelectScene extends Phaser.Scene {
   }
 
   override update(): void {
-    this.parallax.update(this.cameras.main);
+    this.backdrop.update(this.cameras.main);
   }
 
   private createCard(x: number, y: number, index: number, title: string): Card {
@@ -92,10 +93,10 @@ export class LevelSelectScene extends Phaser.Scene {
 
     const numText = this.add
       .text(0, -44, `${index + 1}`, {
-        fontFamily: "'Nunito', sans-serif",
-        fontSize: "44px",
+        fontFamily: "'Fredoka', sans-serif",
+        fontSize: "48px",
         color: "#ffffff",
-        fontStyle: "bold",
+        fontStyle: "700",
       })
       .setOrigin(0.5);
     const nameText = this.add
