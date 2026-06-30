@@ -29,58 +29,34 @@ function px(
   g.fillRect(x, y, w, h);
 }
 
-/** Pseudo-random scatter of small specks for surface texture (deterministic). */
-function scatter(
-  g: Phaser.GameObjects.Graphics,
-  ox: number,
-  oy: number,
-  size: number,
-  count: number,
-  color: number,
-  seed: number
-): void {
-  let s = seed;
-  const rnd = () => {
-    s = (s * 1103515245 + 12345) & 0x7fffffff;
-    return s / 0x7fffffff;
-  };
-  for (let i = 0; i < count; i++) {
-    const x = ox + Math.floor(rnd() * (size - 2));
-    const y = oy + Math.floor(rnd() * (size - 2));
-    px(g, x, y, 2, 2, color);
-  }
-}
-
 // ----- Individual tile painters (each draws one 32px cell at offset ox) -----
 
+/** Smooth soil body from y0 down, with a few soft pebbles (clean, modern). */
+function paintDirtBody(g: Phaser.GameObjects.Graphics, ox: number, y0: number): void {
+  const h = TILE_SIZE - y0;
+  px(g, ox, y0, TILE_SIZE, h, 0x7a4e29); // base
+  px(g, ox, y0, TILE_SIZE, Math.max(3, Math.round(h * 0.32)), 0x8a5b31); // lit upper
+  px(g, ox, TILE_SIZE - 4, TILE_SIZE, 4, 0x68401f); // shaded bottom
+  g.fillStyle(0x5c3a1f, 1); // darker pebbles
+  g.fillCircle(ox + 8, y0 + 9, 2.2);
+  g.fillCircle(ox + 23, y0 + 15, 2.6);
+  g.fillStyle(0x9a6a3e, 0.9); // lighter grains
+  g.fillCircle(ox + 16, y0 + 6, 1.5);
+  g.fillCircle(ox + 27, y0 + Math.min(18, h - 5), 1.7);
+}
+
 function paintGrassTop(g: Phaser.GameObjects.Graphics, ox: number): void {
-  // dirt base with subtle gradient effect
-  px(g, ox, 0, TILE_SIZE, 16, 0x7a4b28);
-  px(g, ox, 16, TILE_SIZE, 16, 0x6e4324);
-  scatter(g, ox, 12, TILE_SIZE, 12, 0x5c3a20, 7);
-  scatter(g, ox, 12, TILE_SIZE, 5, 0x472b16, 21); // darker bits
-  // lush grass band
-  px(g, ox, 0, TILE_SIZE, 11, 0x54a825);
-  px(g, ox, 0, TILE_SIZE, 3, 0x8cd649); // bright top highlight
-  px(g, ox, 10, TILE_SIZE, 2, 0x3d7a1b); // grass/dirt seam shadow
-  // stylized grass blades
-  px(g, ox + 4, 1, 2, 8, 0x3d7a1b);
-  px(g, ox + 5, 1, 2, 5, 0x8cd649); // blade highlight
-  px(g, ox + 14, 2, 2, 7, 0x3d7a1b);
-  px(g, ox + 24, 1, 2, 8, 0x3d7a1b);
-  px(g, ox + 25, 1, 2, 5, 0x8cd649); // blade highlight
-  // tiny white/yellow flowers
-  px(g, ox + 8, 4, 2, 2, 0xffffff);
-  px(g, ox + 9, 5, 2, 2, 0xffd700);
-  px(g, ox + 20, 3, 2, 2, 0xffffff);
+  paintDirtBody(g, ox, 11); // soil under the grass band
+  // Smooth grass band with a soft vertical gradient + crisp top highlight.
+  px(g, ox, 0, TILE_SIZE, 12, 0x57a82c);
+  px(g, ox, 0, TILE_SIZE, 7, 0x66bd35);
+  px(g, ox, 0, TILE_SIZE, 4, 0x77d23f);
+  px(g, ox, 0, TILE_SIZE, 2, 0x93e85a); // bright crest
+  px(g, ox, 11, TILE_SIZE, 2, 0x356a1a); // soft grass/soil seam
 }
 
 function paintDirt(g: Phaser.GameObjects.Graphics, ox: number): void {
-  px(g, ox, 0, TILE_SIZE, 16, 0x7a4b28);
-  px(g, ox, 16, TILE_SIZE, 16, 0x6e4324); // subtle gradient
-  scatter(g, ox, 0, TILE_SIZE, 14, 0x5c3a20, 13);
-  scatter(g, ox, 0, TILE_SIZE, 8, 0x472b16, 42); // darker specks
-  scatter(g, ox, 0, TILE_SIZE, 6, 0x9a6438, 29); // lighter specks
+  paintDirtBody(g, ox, 0);
 }
 
 function paintStone(g: Phaser.GameObjects.Graphics, ox: number): void {
@@ -569,9 +545,10 @@ export function createWorldTextures(scene: Phaser.Scene): void {
   createSky(scene);
   createRays(scene);
   createMenuBackdrop(scene);
-  // Distant, hazy foliage then closer, richer foliage (both tileable).
-  createFoliageLayer(scene, TextureKeys.HillsFar, 512, 220, 96, 46, 64, 0x8fd49a, 0xb6ecc0, 0x3f7a52);
-  createFoliageLayer(scene, TextureKeys.HillsNear, 512, 240, 120, 60, 80, 0x57b15f, 0x86d98a, 0x2c6a39);
+  // Distant, hazy foliage then closer, richer foliage — softer, atmospheric
+  // palette (aerial perspective: far layer lighter/cooler) with smoother bumps.
+  createFoliageLayer(scene, TextureKeys.HillsFar, 512, 220, 96, 58, 84, 0xa9d3c0, 0xc8e8d6, 0x6a9b86);
+  createFoliageLayer(scene, TextureKeys.HillsNear, 512, 240, 120, 74, 104, 0x66b585, 0x8fd2a2, 0x357a55);
   createBeacon(scene);
   createCoin(scene);
   createGrowcap(scene);
