@@ -1,105 +1,106 @@
 import Phaser from "phaser";
-import { SceneKeys, TextureKeys } from "@/config/AssetKeys";
+import { SceneKeys } from "@/config/AssetKeys";
 import { GAME_WIDTH, GAME_HEIGHT } from "@/config/GameConfig";
-import { LEVELS } from "@/config/levels";
-import { gameState } from "@/systems/GameState";
+import { HeroPortrait } from "@/config/characterAssets";
 import { saveState } from "@/systems/SaveState";
+import { ParallaxBackground } from "@/systems/ParallaxBackground";
+import { createButton } from "@/systems/UiButton";
 import { fadeIn, fadeOutThen } from "@/systems/transition";
 
 /**
- * Title screen. Starts a new game, or continues from the highest unlocked level
- * if the player has made progress. Shows the persisted high score.
+ * Home screen: lush parallax backdrop, the character portrait, a big PLAY
+ * button leading to the level select, and the persisted high score.
  */
 export class MenuScene extends Phaser.Scene {
+  private parallax!: ParallaxBackground;
+
   constructor() {
     super(SceneKeys.Menu);
   }
 
   create(): void {
     fadeIn(this);
-    this.add.image(0, 0, TextureKeys.Sky).setOrigin(0, 0);
-    this.add
-      .tileSprite(0, GAME_HEIGHT, GAME_WIDTH, 220, TextureKeys.HillsNear)
-      .setOrigin(0, 1);
+    this.parallax = new ParallaxBackground(this);
 
     const cx = GAME_WIDTH / 2;
 
+    // Title with a soft shadow.
     this.add
-      .text(cx, 84, "LUMIO'S LEAP", {
+      .text(cx, 70, "LUMIO'S LEAP", {
         fontFamily: "monospace",
-        fontSize: "44px",
-        color: "#ffe08a",
+        fontSize: "46px",
+        color: "#ffffff",
         fontStyle: "bold",
-        stroke: "#5a3b00",
-        strokeThickness: 6,
+        stroke: "#1c6b8c",
+        strokeThickness: 8,
       })
-      .setOrigin(0.5);
-
+      .setOrigin(0.5)
+      .setShadow(0, 4, "#00000055", 6);
     this.add
-      .text(cx, 124, "a tiny platforming adventure", {
+      .text(cx, 108, "a bright platforming adventure", {
         fontFamily: "monospace",
         fontSize: "13px",
-        color: "#1a1c2c",
+        color: "#0d3b4d",
       })
       .setOrigin(0.5);
 
-    const unlocked = saveState.getUnlockedLevel();
-    const highScore = saveState.getHighScore();
-
-    const start = this.add
-      .text(cx, 196, "Press SPACE — New Game", {
-        fontFamily: "monospace",
-        fontSize: "18px",
-        color: "#ffffff",
-        backgroundColor: "#00000066",
-        padding: { x: 12, y: 8 },
-      })
-      .setOrigin(0.5);
-    // Gentle pulse to draw the eye.
+    // Character portrait on a soft disc, gently bobbing.
+    const discX = cx - 150;
+    const discY = 230;
+    this.add.circle(discX, discY + 6, 70, 0x0d3b4d, 0.18);
+    const hero = this.add.image(discX, discY, HeroPortrait.key).setScale(1.2);
     this.tweens.add({
-      targets: start,
-      alpha: { from: 1, to: 0.5 },
-      duration: 700,
+      targets: hero,
+      y: discY - 8,
+      duration: 1400,
       yoyo: true,
       repeat: -1,
+      ease: "Sine.inOut",
     });
 
-    if (unlocked > 0 && unlocked < LEVELS.length) {
-      this.add
-        .text(cx, 240, `Press C — Continue (Level ${unlocked + 1})`, {
-          fontFamily: "monospace",
-          fontSize: "14px",
-          color: "#9be35a",
-        })
-        .setOrigin(0.5);
-    }
+    // Primary actions.
+    const btnX = cx + 110;
+    createButton(this, btnX, 195, {
+      width: 230,
+      height: 66,
+      label: "PLAY",
+      fontSize: 26,
+      onClick: () => this.goToLevelSelect(),
+    });
+    createButton(this, btnX, 272, {
+      width: 230,
+      height: 50,
+      label: `High Score  ${saveState.getHighScore()}`,
+      fontSize: 16,
+      color: 0x2a7d9c,
+      hoverColor: 0x2a7d9c,
+      onClick: () => this.goToLevelSelect(),
+    });
 
     this.add
-      .text(cx, 286, `High Score: ${highScore}`, {
+      .text(cx, GAME_HEIGHT - 28, "Press SPACE / ENTER to play", {
         fontFamily: "monospace",
         fontSize: "13px",
-        color: "#1a1c2c",
+        color: "#0d3b4d",
       })
       .setOrigin(0.5);
-
     this.add
-      .text(cx, GAME_HEIGHT - 16, "Arrows/WASD move · Space jump · Shift sprint · P pause", {
+      .text(GAME_WIDTH - 6, GAME_HEIGHT - 6, "character by Kibyra", {
         fontFamily: "monospace",
-        fontSize: "11px",
-        color: "#1a1c2c",
+        fontSize: "9px",
+        color: "#0d3b4d99",
       })
-      .setOrigin(0.5);
+      .setOrigin(1, 1);
 
-    // Inputs.
-    this.input.keyboard?.once("keydown-SPACE", () => this.begin(0));
-    this.input.keyboard?.once("keydown-ENTER", () => this.begin(0));
-    if (unlocked > 0 && unlocked < LEVELS.length) {
-      this.input.keyboard?.once("keydown-C", () => this.begin(unlocked));
-    }
+    this.input.keyboard?.once("keydown-SPACE", () => this.goToLevelSelect());
+    this.input.keyboard?.once("keydown-ENTER", () => this.goToLevelSelect());
   }
 
-  private begin(levelIndex: number): void {
-    gameState.startNewGame(levelIndex);
-    fadeOutThen(this, () => this.scene.start(SceneKeys.Game));
+  override update(): void {
+    this.parallax.update(0); // keep the god-rays drifting
+  }
+
+  private goToLevelSelect(): void {
+    fadeOutThen(this, () => this.scene.start(SceneKeys.LevelSelect));
   }
 }

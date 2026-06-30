@@ -3,6 +3,7 @@ import { createGameConfig } from "@/config/GameConfig";
 import { BootScene } from "@/scenes/BootScene";
 import { PreloadScene } from "@/scenes/PreloadScene";
 import { MenuScene } from "@/scenes/MenuScene";
+import { LevelSelectScene } from "@/scenes/LevelSelectScene";
 import { GameScene } from "@/scenes/GameScene";
 import { UIScene } from "@/scenes/UIScene";
 import { PauseScene } from "@/scenes/PauseScene";
@@ -19,6 +20,7 @@ const config = createGameConfig([
   BootScene,
   PreloadScene,
   MenuScene,
+  LevelSelectScene,
   GameScene,
   UIScene,
   PauseScene,

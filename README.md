@@ -39,7 +39,10 @@ Requires Node 18+ (developed on Node 24).
 | Sprint | Shift |
 | Pause | P / Esc |
 | Mute audio | M |
-| Menus | Space / Enter (and C to continue on the title screen) |
+| Menus | Space / Enter to confirm · Arrows to pick a level · Esc to go back · mouse/click works too |
+
+The game opens on a **home screen** (PLAY) → a **level select** with the four
+levels. Level 1 is open; clearing a level unlocks the next (saved locally).
 
 ## How to play
 

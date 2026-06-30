@@ -7,6 +7,7 @@ export const SceneKeys = {
   Boot: "BootScene",
   Preload: "PreloadScene",
   Menu: "MenuScene",
+  LevelSelect: "LevelSelectScene",
   Game: "GameScene",
   UI: "UIScene",
   Pause: "PauseScene",
