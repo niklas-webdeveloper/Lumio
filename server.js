@@ -3,6 +3,7 @@ import cors from "cors";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import { MongoClient } from "mongodb";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -35,15 +36,48 @@ const DEFAULT_SAVE = {
   bestCoins: [],
 };
 
+// MongoDB setup
+let db = null;
+const MONGODB_URI = process.env.MONGODB_URI;
+
+if (MONGODB_URI) {
+  console.log("Found MONGODB_URI, attempting to connect...");
+  MongoClient.connect(MONGODB_URI)
+    .then((client) => {
+      db = client.db("lumios_leap");
+      console.log("Connected to MongoDB persistently!");
+    })
+    .catch((err) => {
+      console.error("Failed to connect to MongoDB:", err);
+    });
+} else {
+  console.log("No MONGODB_URI environment variable found. Using local filesystem saves fallback.");
+}
+
 // GET endpoint to load save data for a user
-app.get("/api/saves/:username", (req, res) => {
+app.get("/api/saves/:username", async (req, res) => {
   const username = sanitizeUsername(req.params.username);
   if (!username) {
     return res.status(400).json({ error: "Invalid username" });
   }
 
-  const filePath = path.join(SAVES_DIR, `${username}.json`);
+  // Use MongoDB if available
+  if (db) {
+    try {
+      const save = await db.collection("saves").findOne({ username });
+      if (save) {
+        return res.json(save.data);
+      } else {
+        return res.json(DEFAULT_SAVE);
+      }
+    } catch (error) {
+      console.error(`MongoDB error loading save for ${username}:`, error);
+      return res.status(500).json({ error: "Database load failed" });
+    }
+  }
 
+  // Fallback to local files
+  const filePath = path.join(SAVES_DIR, `${username}.json`);
   if (fs.existsSync(filePath)) {
     try {
       const data = JSON.parse(fs.readFileSync(filePath, "utf-8"));
@@ -53,29 +87,43 @@ app.get("/api/saves/:username", (req, res) => {
       return res.status(500).json({ error: "Failed to parse save data" });
     }
   } else {
-    // New user, return default save template
     return res.json(DEFAULT_SAVE);
   }
 });
 
 // POST endpoint to store save data for a user
-app.post("/api/saves/:username", (req, res) => {
+app.post("/api/saves/:username", async (req, res) => {
   const username = sanitizeUsername(req.params.username);
   if (!username) {
     return res.status(400).json({ error: "Invalid username" });
   }
 
-  const filePath = path.join(SAVES_DIR, `${username}.json`);
+  const data = req.body;
+  if (typeof data !== "object" || data === null) {
+    return res.status(400).json({ error: "Invalid save data structure" });
+  }
 
-  try {
-    const data = req.body;
-    // Basic validation of keys to ensure safe write
-    if (typeof data !== "object" || data === null) {
-      return res.status(400).json({ error: "Invalid save data structure" });
+  // Use MongoDB if available
+  if (db) {
+    try {
+      await db.collection("saves").updateOne(
+        { username },
+        { $set: { username, data, updatedAt: new Date() } },
+        { upsert: true }
+      );
+      console.log(`Save file updated in MongoDB for user: ${username}`);
+      return res.json({ success: true });
+    } catch (error) {
+      console.error(`MongoDB error saving for ${username}:`, error);
+      return res.status(500).json({ error: "Database save failed" });
     }
+  }
 
+  // Fallback to local files
+  const filePath = path.join(SAVES_DIR, `${username}.json`);
+  try {
     fs.writeFileSync(filePath, JSON.stringify(data, null, 2), "utf-8");
-    console.log(`Save file updated for user: ${username}`);
+    console.log(`Save file updated locally for user: ${username}`);
     return res.json({ success: true });
   } catch (error) {
     console.error(`Error writing save file for ${username}:`, error);
@@ -84,7 +132,7 @@ app.post("/api/saves/:username", (req, res) => {
 });
 
 // GET endpoint to calculate and retrieve the global leaderboard
-app.get("/api/leaderboard", (req, res) => {
+app.get("/api/leaderboard", async (req, res) => {
   const leaderboard = {
     0: [],
     1: [],
@@ -92,6 +140,43 @@ app.get("/api/leaderboard", (req, res) => {
     3: []
   };
 
+  // Use MongoDB if available
+  if (db) {
+    try {
+      const docs = await db.collection("saves").find().toArray();
+      docs.forEach((doc) => {
+        const username = doc.username;
+        const bestTimes = doc.data?.bestTimes || [];
+        const levelStars = doc.data?.levelStars || [];
+
+        for (let i = 0; i < 4; i++) {
+          const time = bestTimes[i] || 0;
+          const stars = levelStars[i] || 0;
+
+          if (time > 0) {
+            leaderboard[i].push({
+              username: username,
+              time: time,
+              stars: stars
+            });
+          }
+        }
+      });
+
+      // Sort each level's leaderboard by time (ascending) and take top 3
+      for (let i = 0; i < 4; i++) {
+        leaderboard[i].sort((a, b) => a.time - b.time);
+        leaderboard[i] = leaderboard[i].slice(0, 3);
+      }
+
+      return res.json(leaderboard);
+    } catch (error) {
+      console.error("MongoDB error fetching leaderboard:", error);
+      return res.status(500).json({ error: "Database leaderboard load failed" });
+    }
+  }
+
+  // Fallback to local files
   try {
     const files = fs.readdirSync(SAVES_DIR);
     
