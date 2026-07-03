@@ -11,7 +11,7 @@
  "version": "1.10",
  "type": "map",
  "nextlayerid": 3,
- "nextobjectid": 31,
+ "nextobjectid": 34,
  "layers": [
   {
    "id": 1,
@@ -2063,18 +2063,6 @@
      "rotation": 0
     },
     {
-     "id": 24,
-     "name": "plodder",
-     "type": "plodder",
-     "point": true,
-     "x": 1360,
-     "y": 256,
-     "width": 0,
-     "height": 0,
-     "visible": true,
-     "rotation": 0
-    },
-    {
      "id": 25,
      "name": "plodder",
      "type": "plodder",
@@ -2093,18 +2081,6 @@
      "point": true,
      "x": 2384,
      "y": 384,
-     "width": 0,
-     "height": 0,
-     "visible": true,
-     "rotation": 0
-    },
-    {
-     "id": 27,
-     "name": "plodder",
-     "type": "plodder",
-     "point": true,
-     "x": 3472,
-     "y": 256,
      "width": 0,
      "height": 0,
      "visible": true,
@@ -2166,6 +2142,42 @@
        "value": false
       }
      ]
+    },
+    {
+     "id": 31,
+     "name": "bat",
+     "type": "bat",
+     "point": true,
+     "x": 1456,
+     "y": 224,
+     "width": 0,
+     "height": 0,
+     "visible": true,
+     "rotation": 0
+    },
+    {
+     "id": 32,
+     "name": "bat",
+     "type": "bat",
+     "point": true,
+     "x": 2512,
+     "y": 224,
+     "width": 0,
+     "height": 0,
+     "visible": true,
+     "rotation": 0
+    },
+    {
+     "id": 33,
+     "name": "bat",
+     "type": "bat",
+     "point": true,
+     "x": 3600,
+     "y": 224,
+     "width": 0,
+     "height": 0,
+     "visible": true,
+     "rotation": 0
     }
    ]
   }
@@ -2175,12 +2187,12 @@
    "firstgid": 1,
    "name": "terrain",
    "image": "../../public/assets/tilesets/terrain.png",
-   "imagewidth": 256,
-   "imageheight": 32,
+   "imagewidth": 360,
+   "imageheight": 36,
    "tilewidth": 32,
    "tileheight": 32,
-   "columns": 8,
-   "tilecount": 8,
+   "columns": 10,
+   "tilecount": 10,
    "margin": 0,
    "spacing": 0,
    "tiles": [
@@ -2256,6 +2268,16 @@
     },
     {
      "id": 7,
+     "properties": [
+      {
+       "name": "collides",
+       "type": "bool",
+       "value": true
+      }
+     ]
+    },
+    {
+     "id": 9,
      "properties": [
       {
        "name": "collides",

@@ -3,7 +3,6 @@
  * score. All access is guarded so the game still runs if storage is unavailable
  * (e.g. private mode). Kept tiny and serializable for easy extension.
  */
-const STORAGE_KEY = "lumios-leap.save.v1";
 
 export interface SaveData {
   /** Highest level index the player may continue from (0-based). */
@@ -12,6 +11,10 @@ export interface SaveData {
   muted: boolean;
   /** Best star rating (0..3) earned per level index. */
   levelStars: number[];
+  /** Best (lowest) completion time in seconds per level index; 0 = none yet. */
+  bestTimes: number[];
+  /** Most coins collected in a single clear per level index. */
+  bestCoins: number[];
 }
 
 const DEFAULT_SAVE: SaveData = {
@@ -19,31 +22,77 @@ const DEFAULT_SAVE: SaveData = {
   highScore: 0,
   muted: false,
   levelStars: [],
+  bestTimes: [],
+  bestCoins: [],
 };
 
 class SaveState {
   private cache: SaveData | null = null;
+  public currentUsername: string | null = null;
 
   /** Read the save (cached after first load). */
   load(): SaveData {
     if (this.cache) return this.cache;
+    return { ...DEFAULT_SAVE };
+  }
+
+  async setUsername(username: string): Promise<void> {
+    this.currentUsername = username;
+    const sanitized = username.replace(/[^a-zA-Z0-9_\-]/g, "").toLowerCase();
+
+    // Try to load from backend first
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      this.cache = raw
-        ? { ...DEFAULT_SAVE, ...(JSON.parse(raw) as Partial<SaveData>) }
-        : { ...DEFAULT_SAVE };
-    } catch {
+      const response = await fetch(`/api/saves/${sanitized}`);
+      if (response.ok) {
+        this.cache = await response.json();
+      } else {
+        throw new Error("Backend response not ok");
+      }
+    } catch (err) {
+      console.warn("Failed to load save state from backend, trying local storage fallback", err);
+      // Fallback to local storage
+      try {
+        const raw = localStorage.getItem(`lumios-leap.save.${sanitized}`);
+        this.cache = raw
+          ? { ...DEFAULT_SAVE, ...(JSON.parse(raw) as Partial<SaveData>) }
+          : { ...DEFAULT_SAVE };
+      } catch {
+        this.cache = { ...DEFAULT_SAVE };
+      }
+    }
+
+    if (!this.cache) {
       this.cache = { ...DEFAULT_SAVE };
     }
-    return this.cache;
+
+    // Always unlock all levels (level-01 through level-04)
+    this.cache.unlockedLevel = 3;
+    // JSON round-trips array holes/undefined as null — normalize to numbers.
+    this.cache.levelStars = (this.cache.levelStars ?? []).map((v) => v ?? 0);
+    this.cache.bestTimes = (this.cache.bestTimes ?? []).map((v) => v ?? 0);
+    this.cache.bestCoins = (this.cache.bestCoins ?? []).map((v) => v ?? 0);
   }
 
   private persist(): void {
+    if (!this.currentUsername) return;
+    const sanitized = this.currentUsername.replace(/[^a-zA-Z0-9_\-]/g, "").toLowerCase();
+    const data = this.load();
+
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(this.load()));
+      localStorage.setItem(`lumios-leap.save.${sanitized}`, JSON.stringify(data));
     } catch {
       /* storage unavailable — progress simply isn't persisted */
     }
+
+    fetch(`/api/saves/${sanitized}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(data),
+    }).catch((err) => {
+      console.error("Failed to persist save state to backend:", err);
+    });
   }
 
   /** Unlock a level (only ever raises the unlocked ceiling). */
@@ -88,6 +137,41 @@ class SaveState {
       return true;
     }
     return false;
+  }
+
+  /** Best completion time for a level in seconds, or null if never cleared. */
+  getBestTime(index: number): number | null {
+    const t = this.load().bestTimes[index] ?? 0;
+    return t > 0 ? t : null;
+  }
+
+  /**
+   * Record a completion time, keeping the fastest. Returns true when this run
+   * set a new best (including the very first clear).
+   */
+  recordBestTime(index: number, seconds: number): boolean {
+    const data = this.load();
+    const prev = data.bestTimes[index] ?? 0;
+    if (prev <= 0 || seconds < prev) {
+      data.bestTimes[index] = seconds;
+      this.persist();
+      return true;
+    }
+    return false;
+  }
+
+  /** Most coins ever collected in a single clear of a level. */
+  getBestCoins(index: number): number {
+    return this.load().bestCoins[index] ?? 0;
+  }
+
+  /** Record a per-clear coin count, keeping the highest. */
+  recordBestCoins(index: number, coins: number): void {
+    const data = this.load();
+    if (coins > (data.bestCoins[index] ?? 0)) {
+      data.bestCoins[index] = coins;
+      this.persist();
+    }
   }
 
   isMuted(): boolean {

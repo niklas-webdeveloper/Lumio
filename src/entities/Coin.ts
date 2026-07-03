@@ -1,11 +1,21 @@
 import Phaser from "phaser";
 import { TextureKeys } from "@/config/AssetKeys";
+import { WorldAnim, WorldSheet } from "@/config/worldArt";
 
 /**
- * A collectible coin. Spins in place (scaleX flip) and, when overlapped by the
- * player, plays a quick pop-and-fade before removing itself. `collect()` returns
- * true only on the first call so the scene counts each coin exactly once.
+ * A collectible coin — a golden gem that plays its sparkle animation in place.
+ * When overlapped by the player it plays a quick pop-and-fade before removing
+ * itself. `collect()` returns true only on the first call so the scene counts
+ * each coin exactly once.
  */
+/**
+ * Collection hit-box (px), a bit larger than the 26px gem art so a coin is
+ * picked up the moment the (visually much wider) player touches it — the tight
+ * body felt like it "missed" coins on contact. Kept under the 32px coin spacing
+ * so a pickup never grabs an adjacent coin.
+ */
+const COIN_HITBOX = 30;
+
 export class Coin extends Phaser.Physics.Arcade.Sprite {
   public declare body: Phaser.Physics.Arcade.StaticBody;
   private collected = false;
@@ -14,16 +24,13 @@ export class Coin extends Phaser.Physics.Arcade.Sprite {
     super(scene, x, y, TextureKeys.Coin);
     scene.add.existing(this);
     scene.physics.add.existing(this, true); // static body (no gravity)
+    // Widen the pickup area and keep it centered on the coin.
+    this.body.setSize(COIN_HITBOX, COIN_HITBOX);
 
-    // Continuous "spin" by flipping horizontal scale back and forth.
-    scene.tweens.add({
-      targets: this,
-      scaleX: { from: 1, to: 0.2 },
-      duration: 420,
-      yoyo: true,
-      repeat: -1,
-      ease: "Sine.inOut",
-      delay: Phaser.Math.Between(0, 300),
+    // Sparkle loop, de-synced so rows of coins don't blink in unison.
+    this.play({
+      key: WorldAnim.coinSpin,
+      startFrame: Phaser.Math.Between(0, WorldSheet.coin.frames - 1),
     });
   }
 

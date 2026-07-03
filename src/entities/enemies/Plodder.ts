@@ -1,15 +1,22 @@
 import Phaser from "phaser";
 import { TextureKeys } from "@/config/AssetKeys";
+import { WorldAnim } from "@/config/worldArt";
 import { Physics } from "@/config/PhysicsConfig";
 import { Enemy } from "./Enemy";
 
 /** Plodder cruising speed (px/s). */
 const PLODDER_SPEED = 52;
 
+/** Display scale of the 35x26 opossum art (16px-world art in a 32px world). */
+const PLODDER_SCALE = 1.5;
+/** Physics body in source px (slightly inside the art), bottom-aligned. */
+const PLODDER_BODY_W = 26;
+const PLODDER_BODY_H = 20;
+
 /**
- * Plodder: a Goomba-style walker. Paces left/right, reverses at walls, and —
- * crucially — turns around at ledges instead of marching off them. Defeated by
- * a stomp. Needs the terrain layer to probe for ground ahead.
+ * Plodder: a scurrying opossum, Goomba-style. Paces left/right, reverses at
+ * walls, and — crucially — turns around at ledges instead of marching off
+ * them. Defeated by a stomp. Needs the terrain layer to probe for ground ahead.
  */
 export class Plodder extends Enemy {
   public readonly stompable = true;
@@ -22,6 +29,14 @@ export class Plodder extends Enemy {
     private readonly terrain: Phaser.Tilemaps.TilemapLayer
   ) {
     super(scene, x, y, TextureKeys.Plodder);
+    this.setScale(PLODDER_SCALE);
+    // Forgiving hitbox: a bit inside the fur, feet at the frame's bottom edge.
+    this.body.setSize(PLODDER_BODY_W, PLODDER_BODY_H);
+    this.body.setOffset(
+      (this.width - PLODDER_BODY_W) / 2,
+      this.height - PLODDER_BODY_H
+    );
+    this.play(WorldAnim.plodderWalk);
     this.setGravityY(Physics.GRAVITY_Y);
     this.setVelocityX(PLODDER_SPEED * this.direction);
   }

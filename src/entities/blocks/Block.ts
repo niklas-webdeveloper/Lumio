@@ -53,4 +53,13 @@ export abstract class Block extends Phaser.Physics.Arcade.Sprite {
 
   /** Invoked by the scene when the player hits this block from underneath. */
   abstract hitFromBelow(player: Player): void;
+
+  /**
+   * Invoked when the player strikes this block from above — e.g. slamming down
+   * with a ground pound. By default this yields the same result as a hit from
+   * below, so a "?" block can be triggered from either side.
+   */
+  hitFromAbove(player: Player): void {
+    this.hitFromBelow(player);
+  }
 }

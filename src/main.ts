@@ -24,4 +24,5 @@ window.addEventListener("pointerdown", unlockAudio);
 // Expose the game instance during development for debugging / smoke tests.
 if (import.meta.env.DEV) {
   (window as unknown as { game: Phaser.Game }).game = game;
+  (window as unknown as { ui: typeof ui }).ui = ui;
 }

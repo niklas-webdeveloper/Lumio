@@ -36,6 +36,8 @@ Requires Node 18+ (developed on Node 24).
 | Move | ← → / A D |
 | Jump | Space / W / ↑ (hold for a higher jump) |
 | Double jump | press Jump **again** in mid-air — with a flip & spark burst |
+| Duck | ↓ / S (hold) — smaller hit-box to slip through low gaps, slower on foot |
+| Ground pound | ↓ / S in mid-air — a flip then a fast slam; pops "?" blocks from above |
 | Sprint | Shift |
 | Pause | P / Esc |
 | Mute audio | M |
@@ -50,20 +52,34 @@ Run and jump through four stages, collecting coins (100 = an extra life),
 opening **?** Lucky Blocks for coins and the **Growcap** power-up (small → big,
 lets you smash bricks and survive one hit). Stomp **Plodders** from above; avoid
 **Snapvines** that lunge from pipes, plus spikes and bottomless pits. Reach the
-**beacon** before the timer runs out to clear the stage. Progress and your high
-score are saved locally.
+**beacon** to clear the stage — a stopwatch times every run.
+
+Each level awards up to **three stars**: one for clearing it, one for
+collecting **every coin**, and one for beating the level's **par time**. Your
+best time and best coin count per level are saved locally and shown on the
+level select — beat them for a **NEW BEST!**.
 
 ## Features
 
 - **Game feel**: acceleration/friction movement (walk + sprint), variable jump
-  height, **mid-air double jump** (with a flip animation), coyote time, jump
-  buffering, asymmetric gravity, terminal velocity.
+  height, **mid-air double jump** (with a flip animation), **duck** (crouch with a
+  shrunken hit-box), **ground pound** (a mid-air slam that also pops "?" blocks
+  from above), coyote time, jump buffering, asymmetric gravity, terminal velocity.
 - **Camera**: deadzone follow + multi-layer parallax background.
 - **Content**: coins, Lucky/Brick blocks, the Growcap power-up, small/big player
   states with invulnerability, a walking enemy, a pipe plant, spikes, pits, and a
   goal beacon.
-- **Game flow**: title menu, HUD, pause, level-complete, game-over, 4 levels with
-  progression, localStorage save (unlocked level + high score).
+- **A signature mechanic per world**: the desert has **quicksand pits** (wade,
+  sink, hop out — don't linger) patrolled by **vultures**; the graveyard hides
+  **bats** that hang under platforms and chase you ghost-like once woken; the
+  frozen summit is coated in **slippery ice** and drops **icicles** from the
+  platforms above.
+- **Game flow**: title menu, HUD (with a live stopwatch and a per-level coin
+  counter), pause, level-complete, game-over, 4 levels with progression.
+- **Progression**: an earned 3-star rating per level (clear / all coins / beat
+  the par time), per-level best times & best coin counts, and coins that fly
+  into the HUD counter when collected — all saved in localStorage along with
+  the high score.
 - **Polish**: animated character, particle effects, screen shake, scene fades,
   and a synthesized chiptune soundtrack + SFX with a mute toggle.
 
@@ -163,7 +179,7 @@ this.load.image(TextureKeys.Beacon, "assets/sprites/beacon.png");
 
 | Logical asset | Key (`src/config/AssetKeys.ts`) | Expected if replaced |
 | --- | --- | --- |
-| Terrain tileset | `TextureKeys.Tiles` | 256×32 PNG, eight 32px tiles in GID order |
+| Terrain tileset | `TextureKeys.Tiles` | 288×36 PNG, eight 32px tiles in GID order, 2px-extruded (margin 2 / spacing 4) |
 | Sky / hills | `TextureKeys.Sky` / `HillsFar` / `HillsNear` | sky = viewport-sized; hills = seamless, tileable strips |
 | Coin / Growcap | `TextureKeys.Coin` / `Growcap` | small sprites (~20–26px) |
 | Lucky / Brick / Used | `TextureKeys.LuckyBlock` / `Brick` / `UsedBlock` | 32×32 |
@@ -198,8 +214,11 @@ Phaser's sound manager. Mute (M) and the persisted setting still apply.
 - **User interface** — a custom **HTML/CSS** layer (`src/ui/`): a modern
   sci-fi theme (glossy buttons, glow, panels, HUD) rendered as crisp, vector
   DOM over the canvas, using the self-hosted **Orbitron** + **Rajdhani** fonts.
-- **World art & SFX** — original, generated procedurally in code.
-- **Music** — `public/assets/audio/music/hadouken.mp3` (project-supplied).
+- **World art** — tiles, items and enemies from the **SunnyLand** pixel-art
+  pack by **Ansimuz** (https://ansimuz.itch.io), composed into game-ready
+  sheets by `scripts/build-world-art.py`. Remaining world art (pipe, beacon,
+  particles) is generated procedurally in code, as are the SFX.
+- **Music** — `public/assets/audio/music/Track1-4.mp3` (project-supplied).
 
 ## License
 

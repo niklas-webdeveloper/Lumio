@@ -36,11 +36,13 @@ export abstract class Enemy extends Phaser.Physics.Arcade.Sprite {
     this.dying = true;
     this.setVelocity(0, 0);
     this.body.enable = false;
-    // A more realistic, satisfying "squash" animation
+    // A more realistic, satisfying "squash" animation (relative to the
+    // enemy's own display scale, so scaled-up art squashes correctly too).
+    this.anims.stop();
     this.scene.tweens.add({
       targets: this,
-      scaleX: 1.4, // bulge out
-      scaleY: 0.2, // squash flat
+      scaleX: this.scaleX * 1.4, // bulge out
+      scaleY: this.scaleY * 0.2, // squash flat
       alpha: { from: 1, to: 0 }, // fade out simultaneously
       duration: 150,
       ease: "Power2", // smooth squash

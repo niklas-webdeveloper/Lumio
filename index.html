@@ -1,45 +1,159 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <!-- Empty data-URI icon avoids a 404 favicon request. Replace with real art later. -->
-    <link rel="icon" href="data:," />
-    <!-- Self-hosted modern fonts (Fredoka + Nunito). -->
-    <link rel="preload" as="font" type="font/woff2" href="/assets/fonts/Fredoka-600.woff2" crossorigin />
-    <link rel="preload" as="font" type="font/woff2" href="/assets/fonts/Nunito-700.woff2" crossorigin />
-    <link rel="stylesheet" href="/assets/fonts/fonts.css" />
-    <title>Lumio's Leap</title>
-    <style>
-      :root {
-        color-scheme: dark;
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport"
+    content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <link rel="manifest" href="/manifest.json" />
+  <!-- Empty data-URI icon avoids a 404 favicon request. Replace with real art later. -->
+  <link rel="icon" href="data:," />
+  <!-- Self-hosted UI font (Baloo 2 — hyper-casual display face). -->
+  <link rel="preload" as="font" type="font/ttf" href="/assets/fonts/Baloo2-ExtraBold.ttf" crossorigin />
+  <link rel="preload" as="font" type="font/ttf" href="/assets/fonts/Baloo2-Bold.ttf" crossorigin />
+  <link rel="stylesheet" href="/assets/fonts/fonts.css" />
+  <title>Lumio's Leap</title>
+  <style>
+    :root {
+      color-scheme: dark;
+    }
+
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      /* Matches the menu gradient base so there is never a color flash. */
+      background: #2c7794;
+      overflow: hidden;
+      font-family: "Baloo 2", system-ui, sans-serif;
+    }
+
+    /* Center the canvas and let Phaser's Scale.FIT manage its size. */
+    #game-root {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* High-resolution canvas; let the browser smooth it (no pixelation). */
+    #game-root canvas {
+      image-rendering: auto;
+      box-shadow: 0 0 60px rgba(0, 0, 0, 0.55);
+      width: 100vw !important;
+      height: 100vh !important;
+      object-fit: cover !important;
+    }
+
+    /* ---------------------------------------------------------------------
+         Boot splash — static markup so it paints on the very first frame,
+         before any JS/font/asset loads. It covers the Phaser boot + DOM build
+         so the player only ever sees a clean loading screen, then a crossfade
+         into the home menu. Uses system fonts only (no FOUT).
+         --------------------------------------------------------------------- */
+    #boot-splash {
+      position: fixed;
+      inset: 0;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background:
+        radial-gradient(120% 80% at 50% -8%, rgba(255, 255, 255, 0.28), transparent 55%),
+        linear-gradient(180deg, #5fc2d6 0%, #3f9aac 48%, #2c7794 100%);
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      transition: opacity 0.4s ease;
+      opacity: 1;
+    }
+
+    #boot-splash.bs-hide {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .bs-inner {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3.2vmin;
+    }
+
+    .bs-ring {
+      width: 9vmin;
+      height: 9vmin;
+      border-radius: 50%;
+      border: 1vmin solid rgba(255, 255, 255, 0.25);
+      border-top-color: #ffe08a;
+      animation: bs-spin 0.9s linear infinite;
+    }
+
+    @keyframes bs-spin {
+      to {
+        transform: rotate(360deg);
       }
-      html,
-      body {
-        margin: 0;
-        padding: 0;
-        height: 100%;
-        background: #0e1726;
-        overflow: hidden;
-        font-family: "Nunito", system-ui, sans-serif;
-      }
-      /* Center the canvas and let Phaser's Scale.FIT manage its size. */
-      #game-root {
-        width: 100%;
-        height: 100%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-      }
-      /* High-resolution canvas; let the browser smooth it (no pixelation). */
-      #game-root canvas {
-        image-rendering: auto;
-        box-shadow: 0 0 60px rgba(0, 0, 0, 0.55);
-      }
-    </style>
-  </head>
-  <body>
-    <div id="game-root"></div>
-    <script type="module" src="/src/main.ts"></script>
-  </body>
+    }
+
+    .bs-title {
+      font-weight: 800;
+      font-size: 4vmin;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: #eafcff;
+      text-shadow: 0 0.2vmin 0.4vmin rgba(0, 30, 45, 0.45);
+    }
+
+    .bs-bar {
+      width: 34vmin;
+      height: 1.4vmin;
+      border-radius: 1vmin;
+      background: rgba(6, 26, 34, 0.45);
+      border: 0.25vmin solid rgba(255, 255, 255, 0.3);
+      overflow: hidden;
+    }
+
+    .bs-bar>i {
+      display: block;
+      height: 100%;
+      width: 0%;
+      border-radius: 1vmin;
+      background: linear-gradient(90deg, #ffe27a, #f5b524);
+      transition: width 0.25s ease;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="game-root"></div>
+  <div id="boot-splash">
+    <div class="bs-inner">
+      <div class="bs-ring"></div>
+      <div class="bs-title">Lumio's Leap</div>
+      <div class="bs-bar"><i id="bs-fill"></i></div>
+    </div>
+  </div>
+  <div id="portrait-warning">
+    <div class="pw-inner">
+      <div class="pw-icon">
+        <svg viewBox="0 0 24 24" width="80" height="80" fill="none" stroke="#f4c33f" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect>
+          <path d="M12 18h.01"></path>
+          <path d="M17 6H7"></path>
+        </svg>
+        <div class="pw-arrow">
+          <svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="#ffe08a" stroke-width="3"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21.5 2v6h-6M21.34 8a10 10 0 1 0-.45 6.43"></path>
+          </svg>
+        </div>
+      </div>
+      <div class="pw-title">Bitte drehe dein Handy</div>
+      <div class="pw-text">Das Spiel läuft nur im Querformat (Landscape)</div>
+    </div>
+  </div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+
 </html>

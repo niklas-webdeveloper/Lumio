@@ -1,5 +1,6 @@
 import Phaser from "phaser";
 import { TextureKeys } from "@/config/AssetKeys";
+import { WorldAnim } from "@/config/worldArt";
 import { Physics } from "@/config/PhysicsConfig";
 import { TILE_SIZE } from "@/config/GameConfig";
 import type { Player } from "@/entities/Player";
@@ -7,10 +8,14 @@ import type { Player } from "@/entities/Player";
 /** Horizontal cruise speed of a roaming Growcap (px/s). */
 const GROWCAP_SPEED = 70;
 
+/** Display scale of the 19x16 cherry art (16px-world art in a 32px world). */
+const GROWCAP_SCALE = 1.5;
+
 /**
- * The Growcap grow power-up. Emerges upward out of a block, then walks along the
- * ground, reversing at walls, until the player touches it and grows. Add it to a
- * group with `runChildUpdate: true` so its movement logic ticks automatically.
+ * The Growcap grow power-up — a plump cherry. Emerges upward out of a block,
+ * then rolls along the ground, reversing at walls, until the player touches it
+ * and grows. Add it to a group with `runChildUpdate: true` so its movement
+ * logic ticks automatically.
  */
 export class Growcap extends Phaser.Physics.Arcade.Sprite {
   public declare body: Phaser.Physics.Arcade.Body;
@@ -24,6 +29,8 @@ export class Growcap extends Phaser.Physics.Arcade.Sprite {
     scene.physics.add.existing(this);
 
     this.setOrigin(0.5, 1); // anchored at its feet
+    this.setScale(GROWCAP_SCALE);
+    this.play(WorldAnim.growcapIdle);
     this.setCollideWorldBounds(true);
     this.body.setAllowGravity(false);
     this.body.enable = false; // physics off until it finishes emerging

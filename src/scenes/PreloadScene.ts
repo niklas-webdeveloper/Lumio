@@ -1,14 +1,17 @@
 import Phaser from "phaser";
 import { SceneKeys } from "@/config/AssetKeys";
-import { GAME_WIDTH, GAME_HEIGHT, applyDesignViewport } from "@/config/GameConfig";
+import { applyDesignViewport } from "@/config/GameConfig";
 import { createWorldTextures } from "@/systems/TextureFactory";
 import { loadHeroAssets, registerHeroAnimations } from "@/config/characterAssets";
+import { loadWorldArt, setupWorldArt } from "@/config/worldArt";
+import { loadBackgrounds } from "@/config/backgrounds";
 import { ui } from "@/ui/UIManager";
 
 /**
- * PreloadScene: loads all game assets and shows a progress bar.
- * Currently there are no assets to load (Milestone 1), so it draws the bar
- * once and proceeds. Real asset loading is wired in later milestones.
+ * PreloadScene: loads all game assets. Progress is reported to the DOM boot
+ * splash (see UIManager) — the Phaser canvas draws nothing here so the player
+ * only ever sees the single, clean loading screen before it crossfades into
+ * the home menu. No in-canvas loading bar (that flickered behind the DOM).
  */
 export class PreloadScene extends Phaser.Scene {
   constructor() {
@@ -17,44 +20,31 @@ export class PreloadScene extends Phaser.Scene {
 
   preload(): void {
     applyDesignViewport(this);
-    this.createProgressBar();
-    this.load.audio("bgm", "assets/audio/music/hadouken.mp3");
+    // Feed Phaser's load progress into the DOM splash bar (0..0.9; the final
+    // stretch is reserved for texture generation + UI image decode).
+    this.load.on("progress", (value: number) =>
+      ui.setLoadProgress(value * 0.9)
+    );
+    // AAC (160 kbps) — same tracks re-encoded from the 320 kbps mp3 masters
+    // (kept in /audio-originals) at less than half the size.
+    this.load.audio("bgm-1", "assets/audio/music/track1.m4a");
+    this.load.audio("bgm-2", "assets/audio/music/track2.m4a");
+    this.load.audio("bgm-3", "assets/audio/music/track3.m4a");
+    this.load.audio("bgm-4", "assets/audio/music/track4.m4a");
     loadHeroAssets(this); // character sprite sheets + portrait
+    loadWorldArt(this); // tileset, blocks, item/enemy strips (SunnyLand art)
+    loadBackgrounds(this); // per-level parallax background layers
   }
 
   create(): void {
-    // Generate procedural world art + register the character's animations.
+    // Loaded pixel art first (filters + animations), then the procedural
+    // generators — which skip every key the loaded art already fills.
+    setupWorldArt(this);
     createWorldTextures(this);
     registerHeroAnimations(this);
-    // Menus/HUD are the DOM UI layer — hand off to its home screen.
+    ui.setLoadProgress(1);
+    // Menus/HUD are the DOM UI layer — hand off to its home screen, which waits
+    // for critical UI images to decode, then crossfades out of the splash.
     ui.showHome();
-  }
-
-  /** Minimal, dependency-free loading bar drawn with the Graphics API. */
-  private createProgressBar(): void {
-    const barWidth = GAME_WIDTH * 0.6;
-    const barHeight = 16;
-    const x = (GAME_WIDTH - barWidth) / 2;
-    const y = GAME_HEIGHT / 2 - barHeight / 2;
-
-    const border = this.add.graphics();
-    border.lineStyle(2, 0xffffff, 0.8);
-    border.strokeRect(x - 2, y - 2, barWidth + 4, barHeight + 4);
-
-    const fill = this.add.graphics();
-
-    this.add
-      .text(GAME_WIDTH / 2, y - 24, "Loading…", {
-        fontFamily: "'Nunito', sans-serif",
-        fontSize: "16px",
-        color: "#ffffff",
-      })
-      .setOrigin(0.5);
-
-    this.load.on("progress", (value: number) => {
-      fill.clear();
-      fill.fillStyle(0x6ad7ff, 1);
-      fill.fillRect(x, y, barWidth * value, barHeight);
-    });
   }
 }

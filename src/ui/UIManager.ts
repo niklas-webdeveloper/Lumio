@@ -2,8 +2,8 @@ import type Phaser from "phaser";
 import "./ui.css";
 import heroUrl from "../../character/character.png";
 import { SceneKeys } from "@/config/AssetKeys";
-import { LEVELS, getLevel } from "@/config/levels";
-import { gameState, Progression } from "@/systems/GameState";
+import { LEVELS, getLevel, countLevelCoins } from "@/config/levels";
+import { gameState } from "@/systems/GameState";
 import { saveState } from "@/systems/SaveState";
 import { audioManager } from "@/systems/AudioManager";
 
@@ -11,23 +11,46 @@ import { audioManager } from "@/systems/AudioManager";
 export interface CompleteData {
   bonus: number;
   lastLevel: boolean;
+  /** Stars earned this run (1 clear, +1 all coins, +1 under par). */
   stars: number;
+  /** Whether every coin in the level was collected this run. */
+  allCoins: boolean;
+  /** Whether the run finished at or under the level's par time. */
+  underPar: boolean;
+  /** This run's time in seconds. */
+  timeSec: number;
+  /** Best recorded time (after this run), in seconds. */
+  bestTime: number | null;
+  /** True when this run set a new best time (including the first clear). */
+  newBestTime: boolean;
+  /** The level's par time in seconds (the speed-star goal). */
+  parTime: number;
+  /** Coins collected this run / total collectible in the level. */
+  coins: number;
+  coinTotal: number;
+}
+
+/** Format seconds as m:ss (for the HUD stopwatch and par times). */
+function fmtTime(seconds: number): string {
+  const total = Math.floor(seconds);
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+/** Format seconds as m:ss.t (tenths — for results and best times). */
+function fmtTimePrecise(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = seconds - m * 60;
+  const whole = Math.floor(s);
+  const tenths = Math.floor((s - whole) * 10);
+  return `${m}:${String(whole).padStart(2, "0")}.${tenths}`;
 }
 
 type KeyContext = "home" | "levels" | "pause" | "complete" | "gameover" | "game";
 
-const ICONS: Record<string, string> = {
-  play: '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>',
-  pause: '<svg viewBox="0 0 24 24"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>',
-  home: '<svg viewBox="0 0 24 24"><path d="M12 3l9 8h-3v9h-4v-6h-4v6H6v-9H3z"/></svg>',
-  retry: '<svg viewBox="0 0 24 24"><path d="M12 6V3L8 7l4 4V8a4 4 0 1 1-4 4H6a6 6 0 1 0 6-6z"/></svg>',
-  next: '<svg viewBox="0 0 24 24"><path d="M8 5l11 7-11 7z"/></svg>',
-  sound:
-    '<svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 5V4L8 9zm12 3a3 3 0 0 0-2-2.8v5.6A3 3 0 0 0 16 12zm-2-7v2a5 5 0 0 1 0 10v2a7 7 0 0 0 0-14z"/></svg>',
-  coin: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5" fill="#0a1330"/></svg>',
-  heart: '<svg viewBox="0 0 24 24"><path d="M12 21S4 14.6 4 9.2A4.2 4.2 0 0 1 12 7a4.2 4.2 0 0 1 8 2.2C20 14.6 12 21 12 21z"/></svg>',
-  clock: '<svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm1 11h-4v-2h2V7h2z"/></svg>',
-};
+/** Base URL for the Hyper Casual UI kit assets (served from public/). */
+const UI = "/assets/ui";
 
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -40,30 +63,110 @@ function el<K extends keyof HTMLElementTagNameMap>(
   return e;
 }
 
+/** An <img> pointing at a kit asset (no alt/drag noise). */
+function imgEl(name: string, className = ""): HTMLImageElement {
+  const im = el("img", className);
+  im.src = `${UI}/${name}.png`;
+  im.alt = "";
+  im.draggable = false;
+  return im;
+}
+
+/** A glossy PNG pill button with a Baloo-2 label (and optional leading icon). */
+function button(
+  label: string,
+  variant: "green" | "blue" | "gold" | "orange" | "grey" = "green",
+  opts: { big?: boolean; icon?: string } = {}
+): HTMLButtonElement {
+  const b = el("button", `btn ${variant}${opts.big ? " big" : ""}`);
+  if (opts.icon) b.appendChild(imgEl(opts.icon));
+  b.appendChild(document.createTextNode(label));
+  return b;
+}
+
+/** A row of three star icons; the first `filled` are lit, the rest dimmed. */
 function starsRow(filled: number, big = false): string {
   let s = `<span class="stars${big ? " big" : ""}">`;
-  for (let i = 0; i < 3; i++) s += `<span class="star${i < filled ? " on" : ""}">★</span>`;
+  for (let i = 0; i < 3; i++) {
+    s += `<img class="${i < filled ? "on" : "off"}" src="${UI}/star.png" alt="" draggable="false">`;
+  }
   return s + "</span>";
 }
 
 /**
- * DOM/CSS user interface. Renders all menus, dialogs and the HUD as crisp,
- * resolution-independent HTML over the Phaser canvas, and bridges UI actions to
- * the Phaser game (start/pause/resume/stop the gameplay scene).
+ * DOM/CSS user interface (Hyper Casual UI kit). Renders all menus, dialogs and
+ * the HUD as crisp, resolution-independent HTML over the Phaser canvas, using the
+ * kit's glossy PNG panels/buttons/icons, and bridges UI actions to the Phaser
+ * game (start/pause/resume/stop the gameplay scene).
  */
+/**
+ * Critical UI images decoded before the home screen is revealed, so menus,
+ * buttons and the HUD paint complete on the first frame (no pop-in). CSS
+ * background PNGs are warmed into the browser cache the same way.
+ */
+const PRELOAD_IMAGES = [
+  "btn-green",
+  "btn-blue",
+  "btn-orange",
+  "panel-teal",
+  "panel-purple",
+  "play",
+  "crown",
+  "star",
+  "lock",
+  "home",
+  "pause",
+  "sound-on",
+  "sound-off",
+  "coin",
+  "heart",
+  "timer",
+];
+
+const STORAGE_KEY_TOUCH_ENABLED = "lumios_leap_touch_controls_enabled";
+
+const isMobileDevice = (): boolean => {
+  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+    || (window.innerWidth <= 1024 && window.innerHeight <= 768);
+};
+
 class UIManager {
   private game!: Phaser.Game;
   private root!: HTMLDivElement;
   private screens: Record<string, HTMLElement> = {};
   private hud!: HTMLElement;
   private hudEls: Record<string, HTMLElement> = {};
-  private muteBtn!: HTMLElement;
+  private muteImgs: HTMLImageElement[] = [];
   private ctx: KeyContext = "home";
   private selectedLevel = 0;
   private completeLast = false;
 
+  private touchControlsEnabled = false;
+  private touchToggleBtns: HTMLButtonElement[] = [];
+
+  private splash: HTMLElement | null = null;
+  private splashFill: HTMLElement | null = null;
+  private splashHidden = false;
+  /** Resolves once the hero + critical UI images have decoded (or timed out). */
+  private assetsReady: Promise<void> = Promise.resolve();
+
   attach(game: Phaser.Game): void {
     this.game = game;
+    this.splash = document.getElementById("boot-splash");
+    this.splashFill = document.getElementById("bs-fill");
+
+    // Initialize touch state on window
+    window.touchInputState = {
+      left: false,
+      right: false,
+      jump: false,
+      down: false,
+    };
+
+    // Load initial touch enabled status
+    const stored = localStorage.getItem(STORAGE_KEY_TOUCH_ENABLED);
+    this.touchControlsEnabled = stored !== null ? stored === "true" : isMobileDevice();
+
     this.root = el("div");
     this.root.id = "ui-root";
     document.body.appendChild(this.root);
@@ -71,7 +174,204 @@ class UIManager {
     this.buildHome();
     this.buildLevels();
     this.buildHud();
+    this.buildTouchControls();
+
+    this.assetsReady = this.preloadImages();
     window.addEventListener("keydown", (e) => this.onKey(e));
+  }
+
+  private setContext(newCtx: KeyContext): void {
+    this.ctx = newCtx;
+    this.updateTouchControlsVisibility();
+    this.updateLoopState();
+  }
+
+  /**
+   * Phaser redraws the full 1920×1080 canvas every frame even when only a DOM
+   * menu is on screen. Outside active gameplay nothing on the canvas moves
+   * (menus cover it; on pause it shows a static frame), so put the game loop
+   * to sleep there and wake it for play. Saves a lot of GPU/battery/heat.
+   * Note: contexts that (re)start a scene set ctx to "game" *before* calling
+   * scene.start/resume, so the loop is always awake when scene ops run.
+   */
+  private updateLoopState(): void {
+    if (!this.game) return;
+    if (this.ctx === "game") {
+      // seamless wake: adjusts the loop's start time so there's no delta spike.
+      if (!this.game.loop.running) this.game.loop.wake(true);
+    } else if (this.game.loop.running) {
+      this.game.loop.sleep();
+    }
+  }
+
+  private updateTouchControlsVisibility(): void {
+    const overlay = document.getElementById("touch-controls");
+    if (!overlay) return;
+    if (this.touchControlsEnabled && this.ctx === "game") {
+      overlay.classList.remove("hidden");
+    } else {
+      overlay.classList.add("hidden");
+    }
+  }
+
+  private buildTouchControls(): void {
+    const container = el("div", "hidden");
+    container.id = "touch-controls";
+
+    const leftGroup = el("div", "touch-left-group");
+    const btnLeft = el("button", "touch-btn");
+    btnLeft.id = "btn-touch-left";
+    btnLeft.innerHTML = `
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="19" y1="12" x2="5" y2="12"></line>
+        <polyline points="12 19 5 12 12 5"></polyline>
+      </svg>
+    `;
+
+    const btnDown = el("button", "touch-btn big-jump");
+    btnDown.id = "btn-touch-down";
+    btnDown.innerHTML = `
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="12" y1="5" x2="12" y2="19"></line>
+        <polyline points="19 12 12 19 5 12"></polyline>
+      </svg>
+    `;
+
+    const btnRight = el("button", "touch-btn");
+    btnRight.id = "btn-touch-right";
+    btnRight.innerHTML = `
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="5" y1="12" x2="19" y2="12"></line>
+        <polyline points="12 5 19 12 12 19"></polyline>
+      </svg>
+    `;
+
+    leftGroup.append(btnLeft, btnRight);
+
+    const rightGroup = el("div", "touch-right-group");
+    const btnJump = el("button", "touch-btn big-jump");
+    btnJump.id = "btn-touch-jump";
+    btnJump.innerHTML = `
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="12" y1="19" x2="12" y2="5"></line>
+        <polyline points="5 12 12 5 19 12"></polyline>
+      </svg>
+    `;
+
+    rightGroup.append(btnDown, btnJump);
+    container.append(leftGroup, rightGroup);
+
+    // Append to this.root (which is inside #ui-root) so the .hidden CSS styling is correctly applied
+    this.root.appendChild(container);
+
+    const bindEvents = (
+      btn: HTMLElement,
+      stateKey: "left" | "right" | "jump" | "down"
+    ) => {
+      const start = (e: Event) => {
+        e.preventDefault();
+        if (window.touchInputState) {
+          window.touchInputState[stateKey] = true;
+        }
+      };
+
+      const end = (e: Event) => {
+        e.preventDefault();
+        if (window.touchInputState) {
+          window.touchInputState[stateKey] = false;
+        }
+      };
+
+      btn.addEventListener("touchstart", start, { passive: false });
+      btn.addEventListener("touchend", end, { passive: false });
+      btn.addEventListener("touchcancel", end, { passive: false });
+
+      btn.addEventListener("mousedown", start);
+      const handleMouseUp = () => {
+        if (window.touchInputState) {
+          window.touchInputState[stateKey] = false;
+        }
+      };
+      btn.addEventListener("mouseup", handleMouseUp);
+      btn.addEventListener("mouseleave", handleMouseUp);
+    };
+
+    bindEvents(btnLeft, "left");
+    bindEvents(btnRight, "right");
+    bindEvents(btnDown, "down");
+    bindEvents(btnJump, "jump");
+  }
+
+  private touchToggleButton(): HTMLButtonElement {
+    const b = el("button", `icon-btn small touch-toggle${this.touchControlsEnabled ? " active" : ""}`);
+    b.title = "Touch-Steuerung umschalten";
+    b.innerHTML = `
+      <svg viewBox="0 0 24 24" width="100%" height="100%" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display: block;">
+        <line x1="4" y1="12" x2="10" y2="12"></line>
+        <line x1="7" y1="9" x2="7" y2="15"></line>
+        <circle cx="17" cy="10" r="1.5" fill="currentColor"></circle>
+        <circle cx="20" cy="13" r="1.5" fill="currentColor"></circle>
+      </svg>
+    `;
+    b.onclick = () => this.toggleTouchControls();
+    this.touchToggleBtns.push(b);
+    return b;
+  }
+
+  private toggleTouchControls(): void {
+    this.touchControlsEnabled = !this.touchControlsEnabled;
+    localStorage.setItem(STORAGE_KEY_TOUCH_ENABLED, String(this.touchControlsEnabled));
+    for (const btn of this.touchToggleBtns) {
+      btn.classList.toggle("active", this.touchControlsEnabled);
+    }
+    this.updateTouchControlsVisibility();
+  }
+
+  // ---------- Boot splash ----------
+
+  /** Drive the boot-splash progress bar (0..1). */
+  setLoadProgress(value: number): void {
+    if (this.splashFill)
+      this.splashFill.style.width = `${Math.round(Math.max(0, Math.min(1, value)) * 100)}%`;
+  }
+
+  /**
+   * Decode the hero portrait + critical UI PNGs. Never rejects and never blocks
+   * for long: a timeout resolves it so a slow/failed image can't hang startup.
+   */
+  private preloadImages(): Promise<void> {
+    const decode = (src: string) =>
+      new Promise<void>((resolve) => {
+        const im = new Image();
+        im.onload = () => resolve();
+        im.onerror = () => resolve();
+        im.src = src;
+        // decode() warms the cache without forcing layout; ignore failures.
+        im.decode?.().then(() => resolve()).catch(() => resolve());
+      });
+    const all = Promise.all([
+      decode(heroUrl),
+      ...PRELOAD_IMAGES.map((n) => decode(`${UI}/${n}.png`)),
+    ]).then(() => undefined);
+    const timeout = new Promise<void>((resolve) => setTimeout(resolve, 1800));
+    return Promise.race([all, timeout]);
+  }
+
+  /** Crossfade the splash out once assets are ready (idempotent). */
+  private hideSplash(): void {
+    if (this.splashHidden || !this.splash) return;
+    this.splashHidden = true;
+    this.assetsReady.then(() => {
+      this.setLoadProgress(1);
+      const splash = this.splash;
+      if (!splash) return;
+      splash.classList.add("bs-hide");
+      splash.addEventListener("transitionend", () => splash.remove(), {
+        once: true,
+      });
+      // Fallback removal in case the transitionend never fires.
+      window.setTimeout(() => splash.remove(), 700);
+    });
   }
 
   // ---------- Screen plumbing ----------
@@ -81,15 +381,46 @@ class UIManager {
     this.hud.classList.add("hidden");
   }
 
+  /** Show a menu screen with a fresh fade-in (restarts the animation each time). */
+  private revealScreen(s: HTMLElement): void {
+    s.classList.remove("hidden");
+    s.classList.remove("fade-in");
+    void s.offsetWidth; // force reflow so the animation restarts every time
+    s.classList.add("fade-in");
+  }
+
   private stopGame(): void {
     if (this.game.scene.isActive(SceneKeys.Game)) this.game.scene.stop(SceneKeys.Game);
     if (this.game.scene.isPaused(SceneKeys.Game)) this.game.scene.stop(SceneKeys.Game);
   }
 
+  /** A round PNG icon button (pause / mute) with hover + press feedback. */
+  private iconButton(iconName: string, onClick: () => void): HTMLButtonElement {
+    const b = el("button", "icon-btn small");
+    b.appendChild(imgEl(iconName));
+    b.onclick = onClick;
+    return b;
+  }
+
+  /** A mute toggle whose icon tracks the shared audio state. */
+  private muteButton(): HTMLButtonElement {
+    const b = el("button", "icon-btn small");
+    const im = imgEl(audioManager.isMuted() ? "sound-off" : "sound-on");
+    b.appendChild(im);
+    b.onclick = () => this.toggleMute();
+    this.muteImgs.push(im);
+    return b;
+  }
+
   // ---------- Home ----------
 
   private buildHome(): void {
-    const s = el("div", "ui-screen");
+    const s = el("div", "ui-screen hidden");
+
+    const tools = el("div", "corner-tools");
+    tools.appendChild(this.touchToggleButton());
+    tools.appendChild(this.muteButton());
+
     const title = el("div", "title", "LUMIO'S LEAP");
     const sub = el("div", "subtitle", "a bright platforming adventure");
 
@@ -100,38 +431,200 @@ class UIManager {
     hero.appendChild(img);
 
     const actions = el("div", "home-actions");
-    const play = el("button", "btn accent big", "Play");
+    const play = button("PLAY", "green", { big: true, icon: "play" });
     play.onclick = () => this.showLevels();
     const hi = el("div", "home-hi");
     hi.id = "home-hi";
-    actions.append(play, hi);
+    hi.appendChild(imgEl("crown"));
+    hi.appendChild(el("span", "", "High Score 0"));
+
+    const leaderboard = button("BESTENLISTE", "orange", { icon: "star" });
+    leaderboard.onclick = () => this.showLeaderboard();
+
+    actions.append(play, hi, leaderboard);
 
     stage.append(hero, actions);
     const hint = el("div", "hint", "Press SPACE / ENTER · character by Kibyra");
-    s.append(title, sub, stage, hint);
+    s.append(tools, title, sub, stage, hint);
     this.root.appendChild(s);
     this.screens.home = s;
   }
 
   showHome(): void {
     this.stopGame();
-    (this.screens.home.querySelector("#home-hi") as HTMLElement).textContent = `High Score  ${saveState.getHighScore()}`;
+    if (!saveState.currentUsername) {
+      this.showLoginOverlay();
+      return;
+    }
+    const hi = this.screens.home.querySelector("#home-hi span") as HTMLElement;
+    hi.textContent = `Spieler: ${saveState.currentUsername}`;
+    
+    const hiContainer = this.screens.home.querySelector("#home-hi") as HTMLElement;
+    if (hiContainer) {
+      hiContainer.style.cursor = "pointer";
+      hiContainer.title = "Spieler wechseln";
+      hiContainer.onclick = () => {
+        saveState.currentUsername = null;
+        this.showLoginOverlay();
+      };
+    }
+
     this.hideAll();
     this.closeOverlays();
-    this.screens.home.classList.remove("hidden");
-    this.screens.home.classList.add("fade-in");
-    this.ctx = "home";
+    this.revealScreen(this.screens.home);
+    this.refreshMuteIcon();
+    this.setContext("home");
+    // First time here: fade the boot splash away to reveal the ready menu.
+    this.hideSplash();
+  }
+
+  showLoginOverlay(): void {
+    this.stopGame();
+    this.hideAll();
+    this.closeOverlays();
+    this.setContext("home");
+
+    const o = this.overlay(true);
+    o.id = "login-overlay";
+
+    const p = el("div", "panel teal login-panel");
+    p.appendChild(el("div", "panel-title", "PROFIL WÄHLEN"));
+
+    const desc = el("div", "muted-text", "Gib deinen Namen ein, um deinen Spielstand zu laden:");
+    desc.style.fontSize = "2.4vmin";
+    desc.style.marginBottom = "1.5vmin";
+    desc.style.textAlign = "center";
+    p.appendChild(desc);
+
+    const input = el("input") as HTMLInputElement;
+    input.type = "text";
+    input.placeholder = "Dein Name...";
+    input.maxLength = 15;
+    input.className = "login-input";
+    if (saveState.currentUsername) {
+      input.value = saveState.currentUsername;
+    }
+    p.appendChild(input);
+
+    const row = el("div", "row");
+    const submitBtn = button("LOSLEGEN", "green", { icon: "play" });
+
+    const handleLogin = async () => {
+      const val = input.value.trim();
+      if (!val) {
+        input.classList.add("error-shake");
+        setTimeout(() => input.classList.remove("error-shake"), 500);
+        return;
+      }
+      submitBtn.disabled = true;
+      const originalText = submitBtn.innerHTML;
+      submitBtn.textContent = "LÄDT...";
+      try {
+        await saveState.setUsername(val);
+        this.closeOverlays();
+        this.showHome();
+      } catch (err) {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = originalText;
+        console.error("Login failed:", err);
+      }
+    };
+
+    submitBtn.onclick = handleLogin;
+    input.onkeydown = (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        handleLogin();
+      }
+    };
+
+    row.appendChild(submitBtn);
+    p.appendChild(row);
+    o.appendChild(p);
+
+    this.hideSplash();
+    setTimeout(() => input.focus(), 300);
+  }
+
+  showLeaderboard(): void {
+    this.stopGame();
+    this.hideAll();
+    this.closeOverlays();
+    this.setContext("home");
+
+    const o = this.overlay(true);
+    o.id = "leaderboard-overlay";
+
+    const p = el("div", "panel purple wide");
+    p.appendChild(el("div", "panel-title", "BESTENLISTE"));
+
+    const loading = el("div", "muted-text", "Lade Daten...");
+    loading.style.textAlign = "center";
+    loading.style.fontSize = "2.8vmin";
+    p.appendChild(loading);
+
+    const closeBtn = button("ZURÜCK", "blue", { icon: "home" });
+    closeBtn.onclick = () => {
+      this.closeOverlays();
+      this.showHome();
+    };
+
+    fetch("/api/leaderboard")
+      .then((r) => r.json())
+      .then((data) => {
+        loading.remove();
+
+        const container = el("div", "leaderboard-container");
+
+        for (let i = 0; i < 4; i++) {
+          const levelDiv = el("div", "leaderboard-level");
+          levelDiv.appendChild(el("div", "leaderboard-level-title", `LEVEL ${i + 1}`));
+
+          const list = el("div", "leaderboard-list");
+          const levelData = data[i] || [];
+
+          if (levelData.length === 0) {
+            list.appendChild(el("div", "leaderboard-empty", "Keine Einträge"));
+          } else {
+            levelData.forEach((entry: any, index: number) => {
+              const row = el("div", "leaderboard-row");
+              
+              const rank = el("span", "leaderboard-rank", `${index + 1}.`);
+              const name = el("span", "leaderboard-name", entry.username);
+              const time = el("span", "leaderboard-time", fmtTimePrecise(entry.time));
+              
+              const stars = el("span", "leaderboard-stars");
+              stars.innerHTML = starsRow(entry.stars);
+              
+              row.append(rank, name, time, stars);
+              list.appendChild(row);
+            });
+          }
+
+          levelDiv.appendChild(list);
+          container.appendChild(levelDiv);
+        }
+
+        p.insertBefore(container, closeBtn);
+      })
+      .catch((err) => {
+        loading.textContent = "Fehler beim Laden!";
+        console.error("Leaderboard error:", err);
+      });
+
+    p.appendChild(closeBtn);
+    o.appendChild(p);
   }
 
   // ---------- Level select ----------
 
   private buildLevels(): void {
-    const s = el("div", "ui-screen");
+    const s = el("div", "ui-screen hidden");
     s.append(el("div", "title", "LEVELS"));
     const grid = el("div", "level-grid");
     grid.id = "level-grid";
     s.appendChild(grid);
-    const back = el("button", "btn", "Back");
+    const back = button("Back", "blue");
     back.onclick = () => this.showHome();
     s.appendChild(back);
     s.appendChild(el("div", "hint", "← → choose · Enter play · Esc back"));
@@ -147,18 +640,23 @@ class UIManager {
     LEVELS.forEach((lvl, i) => {
       const locked = i > unlocked;
       const card = el("div", `level-card${locked ? " locked" : ""}`);
+      const best = saveState.getBestTime(i);
+      const meta =
+        `<div class="lvl-meta">` +
+        `<span>${this.icoTag("timer")}${best !== null ? fmtTimePrecise(best) : "-:--"}</span>` +
+        `<span>${this.icoTag("coin")}${saveState.getBestCoins(i)}/${countLevelCoins(lvl)}</span>` +
+        `</div>`;
       card.innerHTML = locked
-        ? `<div class="lock-badge">🔒</div><div class="lvl-num">${i + 1}</div><div class="lvl-name">${lvl.title}</div>`
-        : `<div class="lvl-num">${i + 1}</div>${starsRow(saveState.getLevelStars(i))}<div class="lvl-name">${lvl.title}</div>`;
+        ? `<div class="lock-badge"><img src="${UI}/lock.png" alt="" draggable="false"></div><div class="lvl-name">${lvl.title}</div>`
+        : `<div class="lvl-num">${i + 1}</div>${starsRow(saveState.getLevelStars(i))}${meta}<div class="lvl-name">${lvl.title}</div>`;
       card.onmouseenter = () => this.selectLevel(i);
       card.onclick = () => this.tryPlay(i);
       grid.appendChild(card);
     });
     this.hideAll();
     this.closeOverlays();
-    this.screens.levels.classList.remove("hidden");
-    this.screens.levels.classList.add("fade-in");
-    this.ctx = "levels";
+    this.revealScreen(this.screens.levels);
+    this.setContext("levels");
     this.highlightLevel();
   }
 
@@ -188,7 +686,7 @@ class UIManager {
     gameState.startNewGame(i);
     this.hideAll();
     this.closeOverlays();
-    this.ctx = "game";
+    this.setContext("game");
     this.hud.classList.remove("hidden");
     this.game.scene.start(SceneKeys.Game);
   }
@@ -197,8 +695,9 @@ class UIManager {
   onGameSceneCreate(): void {
     this.closeOverlays();
     this.hud.classList.remove("hidden");
-    this.ctx = "game";
+    this.setContext("game");
     this.showLevelTitle();
+    this.showNowPlaying();
   }
 
   // ---------- HUD ----------
@@ -207,24 +706,21 @@ class UIManager {
     const hud = el("div", "hud hidden");
     const left = el("div", "hud-cluster");
     const score = el("div", "chip");
-    score.innerHTML = `Score <span class="val" id="hud-score">0</span>`;
+    score.innerHTML = `<span class="lbl">Score</span> <span class="val" id="hud-score">0</span>`;
     const coins = el("div", "chip coins");
-    coins.innerHTML = `<span class="ico">${ICONS.coin}</span><div class="bar"><i id="hud-coinbar"></i></div><span class="val" id="hud-coins">0</span>`;
+    coins.innerHTML = `<span class="ico" id="hud-coin-ico">${this.icoTag("coin")}</span><div class="bar"><i id="hud-coinbar"></i></div><span class="val" id="hud-coins">0</span>`;
     const lives = el("div", "chip");
-    lives.innerHTML = `<span class="ico" style="color:#ff4d8d">${ICONS.heart}</span><span class="val" id="hud-lives">3</span>`;
+    lives.innerHTML = `<span class="ico">${this.icoTag("heart")}</span><span class="val" id="hud-lives">3</span>`;
     left.append(score, coins, lives);
 
     const right = el("div", "hud-cluster");
     const level = el("div", "chip");
-    level.innerHTML = `<span id="hud-level">Lv 1</span>`;
+    level.innerHTML = `<span class="lbl" id="hud-level">Lv 1</span>`;
     const time = el("div", "chip time");
-    time.innerHTML = `<span class="ico" style="color:#8effc0">${ICONS.clock}</span><span class="val" id="hud-time">300</span>`;
+    time.innerHTML = `<span class="ico">${this.icoTag("timer")}</span><span class="val" id="hud-time">0:00</span>`;
     const tools = el("div", "hud-right");
-    const pause = el("button", "icon-btn small", ICONS.pause);
-    pause.onclick = () => this.requestPause();
-    this.muteBtn = el("button", "icon-btn small", ICONS.sound);
-    this.muteBtn.onclick = () => this.toggleMute();
-    tools.append(pause, this.muteBtn);
+    const pause = this.iconButton("pause", () => this.requestPause());
+    tools.append(pause, this.touchToggleButton(), this.muteButton());
     right.append(level, time, tools);
 
     hud.append(left, right);
@@ -233,6 +729,8 @@ class UIManager {
     this.hudEls = {
       score: hud.querySelector("#hud-score") as HTMLElement,
       coins: hud.querySelector("#hud-coins") as HTMLElement,
+      coinIco: hud.querySelector("#hud-coin-ico") as HTMLElement,
+      coinChip: coins,
       coinbar: hud.querySelector("#hud-coinbar") as HTMLElement,
       lives: hud.querySelector("#hud-lives") as HTMLElement,
       level: hud.querySelector("#hud-level") as HTMLElement,
@@ -241,25 +739,89 @@ class UIManager {
     this.refreshMuteIcon();
   }
 
+  /** Inline <img> markup for a HUD stat icon. */
+  private icoTag(name: string): string {
+    return `<img src="${UI}/${name}.png" alt="" draggable="false">`;
+  }
+
+  /** Last-written HUD strings — updateHud runs every frame, but writing the DOM
+   *  60×/s forces style/layout recalcs, so only touch it when a value changed. */
+  private hudCache: Record<string, string> = {};
+
   updateHud(): void {
     if (this.hud.classList.contains("hidden")) return;
-    this.hudEls.score.textContent = `${gameState.score}`;
-    this.hudEls.coins.textContent = `${gameState.coins}`;
-    this.hudEls.coinbar.style.width = `${(gameState.coins / Progression.COINS_PER_LIFE) * 100}%`;
-    this.hudEls.lives.textContent = `${Math.max(0, gameState.lives)}`;
-    this.hudEls.level.textContent = `Lv ${gameState.levelIndex + 1}`;
-    this.hudEls.time.textContent = `${Math.ceil(gameState.timeLeft)}`;
+    this.setHudText("score", `${gameState.score}`);
+    // Level coins vs. the level's total (the "all coins" star goal); the bar
+    // fills in sync and is full exactly when every coin was collected.
+    const coins = `${gameState.levelCoins}/${gameState.levelCoinTotal}`;
+    if (this.hudCache.coins !== coins) {
+      this.setHudText("coins", coins);
+      const coinFrac =
+        gameState.levelCoinTotal > 0 ? gameState.levelCoins / gameState.levelCoinTotal : 0;
+      this.hudEls.coinbar.style.width = `${Math.min(1, coinFrac) * 100}%`;
+    }
+    this.setHudText("lives", `${Math.max(0, gameState.lives)}`);
+    this.setHudText("level", `Lv ${gameState.levelIndex + 1}`);
+    this.setHudText("time", fmtTime(gameState.timeElapsed));
+  }
+
+  private setHudText(key: string, text: string): void {
+    if (this.hudCache[key] === text) return;
+    this.hudCache[key] = text;
+    this.hudEls[key].textContent = text;
+  }
+
+  /**
+   * Fly a coin sprite from a viewport position into the HUD coin counter,
+   * then bump the counter chip. Called by GameScene on every coin pickup.
+   */
+  flyCoinToHud(from: { x: number; y: number }): void {
+    if (this.hud.classList.contains("hidden")) return;
+    const target = this.hudEls.coinIco.getBoundingClientRect();
+    const size = Math.max(target.width, 24);
+    const coin = imgEl("coin", "fly-coin");
+    coin.style.left = `${from.x - size / 2}px`;
+    coin.style.top = `${from.y - size / 2}px`;
+    coin.style.width = `${size}px`;
+    coin.style.height = `${size}px`;
+    this.root.appendChild(coin);
+
+    const dx = target.left + target.width / 2 - from.x;
+    const dy = target.top + target.height / 2 - from.y;
+    coin
+      .animate(
+        [
+          { transform: "translate(0, 0) scale(1.25)", opacity: 1 },
+          {
+            transform: `translate(${dx * 0.35}px, ${dy * 0.35 - 40}px) scale(1.1)`,
+            opacity: 1,
+            offset: 0.4,
+          },
+          { transform: `translate(${dx}px, ${dy}px) scale(0.55)`, opacity: 0.9 },
+        ],
+        { duration: 520, easing: "cubic-bezier(0.35, 0, 0.6, 1)" }
+      )
+      .onfinish = () => {
+      coin.remove();
+      // Pop the counter chip so the arrival reads as "counted".
+      const chip = this.hudEls.coinChip;
+      chip.classList.remove("bump");
+      void chip.offsetWidth; // restart the animation on rapid pickups
+      chip.classList.add("bump");
+    };
+    // Safety net if animations are throttled (hidden tab).
+    window.setTimeout(() => coin.remove(), 1200);
   }
 
   showLevelTitle(): void {
     const card = el("div", "title");
     Object.assign(card.style, {
       position: "absolute",
-      top: "30%",
+      top: "28%",
       left: "0",
       right: "0",
       textAlign: "center",
-      fontSize: "6vmin",
+      fontSize: "6.5vmin",
       pointerEvents: "none",
     });
     card.textContent = getLevel(gameState.levelIndex)?.title ?? "";
@@ -273,6 +835,32 @@ class UIManager {
       ],
       { duration: 2200, easing: "ease-out" }
     ).onfinish = () => card.remove();
+  }
+
+  /**
+   * "Now Playing" toast: slides in below the HUD shortly after the level title,
+   * shows the track with a live equalizer, then slides back out on its own.
+   */
+  private showNowPlaying(): void {
+    const lvl = getLevel(gameState.levelIndex);
+    if (!lvl) return;
+    document.getElementById("now-playing")?.remove();
+
+    const toast = el("div", "now-playing");
+    toast.id = "now-playing";
+    toast.innerHTML =
+      `<span class="np-eq"><i></i><i></i><i></i><i></i></span>` +
+      `<span class="np-text">` +
+      `<span class="np-label">Now Playing</span>` +
+      `<span class="np-title">${lvl.trackTitle}</span>` +
+      `<span class="np-artist">${lvl.trackArtist}</span>` +
+      `</span>`;
+    this.root.appendChild(toast);
+    toast.addEventListener("animationend", (e) => {
+      if (e.animationName === "npOut") toast.remove();
+    });
+    // Safety net if the tab is hidden and animations are throttled.
+    window.setTimeout(() => toast.remove(), 8000);
   }
 
   // ---------- Overlays (pause / complete / game over) ----------
@@ -295,29 +883,29 @@ class UIManager {
     this.game.scene.pause(SceneKeys.Game);
     const o = this.overlay(false);
     const p = el("div", "panel");
-    p.append(el("div", "panel-title", "Paused"));
+    p.append(el("div", "panel-title", "PAUSED"));
     const row = el("div", "row");
-    const resume = el("button", "btn accent", "Resume");
+    const resume = button("Resume", "green");
     resume.onclick = () => this.resume();
-    const retry = el("button", "btn", "Retry");
+    const retry = button("Retry", "orange");
     retry.onclick = () => this.restartLevel();
-    const home = el("button", "btn", "Home");
+    const home = button("Home", "blue", { icon: "home" });
     home.onclick = () => this.showHome();
     row.append(resume, retry, home);
     p.appendChild(row);
     o.appendChild(p);
-    this.ctx = "pause";
+    this.setContext("pause");
   }
 
   resume(): void {
     this.closeOverlays();
-    this.ctx = "game";
+    this.setContext("game");
     this.game.scene.resume(SceneKeys.Game);
   }
 
   restartLevel(): void {
     this.closeOverlays();
-    this.ctx = "game";
+    this.setContext("game");
     this.game.scene.start(SceneKeys.Game);
   }
 
@@ -326,25 +914,57 @@ class UIManager {
     this.completeLast = data.lastLevel;
     this.hud.classList.add("hidden");
     const o = this.overlay(true);
-    const p = el("div", "panel");
-    p.append(el("div", "panel-title", data.lastLevel ? "You Win!" : "Completed"));
+    const p = el("div", "panel wide");
+    p.append(el("div", "panel-title", data.lastLevel ? "YOU WIN!" : "LEVEL COMPLETE"));
     p.insertAdjacentHTML("beforeend", starsRow(data.stars, true));
-    p.append(el("div", "score", `${gameState.score}`));
-    p.append(el("div", "muted-text", `+${data.bonus} time bonus`));
+
+    // One line per star: what it's for and whether this run earned it.
+    const crit = (earned: boolean, label: string) =>
+      `<div class="crit${earned ? "" : " off"}">` +
+      `<img src="${UI}/star.png" class="${earned ? "on" : "off"}" alt="" draggable="false">` +
+      `<span>${label}</span>` +
+      `</div>`;
+    const critList = el("div", "crit-list");
+    critList.innerHTML =
+      crit(true, "Level cleared") +
+      crit(data.allCoins, `All coins &nbsp;·&nbsp; ${data.coins}/${data.coinTotal}`) +
+      crit(data.underPar, `Beat ${fmtTime(data.parTime)} &nbsp;·&nbsp; ${fmtTimePrecise(data.timeSec)}`);
+    p.appendChild(critList);
+
+    const timeBox =
+      `<div class="stat-box time"><span class="k">Time</span>` +
+      `<span class="v">${fmtTimePrecise(data.timeSec)}</span>` +
+      (data.newBestTime ? `<span class="badge-record">NEW BEST!</span>` : "") +
+      `</div>`;
+    const bestBox =
+      `<div class="stat-box"><span class="k">Best</span>` +
+      `<span class="v">${data.bestTime !== null ? fmtTimePrecise(data.bestTime) : "-:--"}</span></div>`;
+    const timeRow = el("div", "stat-row");
+    timeRow.innerHTML = timeBox + bestBox;
+    p.appendChild(timeRow);
+
+    const stats = el("div", "stat-row");
+    stats.innerHTML =
+      `<div class="stat-box"><span class="k">Score</span><span class="v">${gameState.score}</span></div>` +
+      `<div class="stat-box coins"><span class="k">Bonus</span><span class="v">+${data.bonus}</span></div>`;
+    p.appendChild(stats);
+
     const row = el("div", "row");
-    const retry = el("button", "btn", "Retry");
+    const retry = button("Retry", "orange");
     retry.onclick = () => this.startLevel(gameState.levelIndex);
-    const home = el("button", "btn", "Home");
+    const home = button("Home", "blue", { icon: "home" });
     home.onclick = () => this.showHome();
-    row.append(retry, home);
     if (!data.lastLevel) {
-      const next = el("button", "btn accent", "Next");
+      // Primary call-to-action first (top of the stack).
+      const next = button("Next", "green");
       next.onclick = () => this.startLevel(gameState.levelIndex + 1);
-      row.appendChild(next);
+      row.append(next, retry, home);
+    } else {
+      row.append(retry, home);
     }
     p.appendChild(row);
     o.appendChild(p);
-    this.ctx = "complete";
+    this.setContext("complete");
   }
 
   showGameOver(): void {
@@ -352,19 +972,19 @@ class UIManager {
     this.stopGame();
     this.hud.classList.add("hidden");
     const o = this.overlay(true);
-    const p = el("div", "panel");
-    p.append(el("div", "panel-title", "Game Over"));
+    const p = el("div", "panel purple");
+    p.appendChild(imgEl("banner-defeat", "panel-banner"));
     p.append(el("div", "score", `${gameState.score}`));
     p.append(el("div", "muted-text", `Best  ${saveState.getHighScore()}`));
     const row = el("div", "row");
-    const retry = el("button", "btn accent", "Retry");
+    const retry = button("Retry", "orange");
     retry.onclick = () => this.startLevel(gameState.levelIndex);
-    const home = el("button", "btn", "Home");
+    const home = button("Home", "blue", { icon: "home" });
     home.onclick = () => this.showHome();
     row.append(retry, home);
     p.appendChild(row);
     o.appendChild(p);
-    this.ctx = "gameover";
+    this.setContext("gameover");
   }
 
   // ---------- Audio ----------
@@ -376,12 +996,16 @@ class UIManager {
   }
 
   private refreshMuteIcon(): void {
-    if (this.muteBtn) this.muteBtn.classList.toggle("muted", audioManager.isMuted());
+    const src = `${UI}/${audioManager.isMuted() ? "sound-off" : "sound-on"}.png`;
+    for (const im of this.muteImgs) im.src = src;
   }
 
   // ---------- Keyboard ----------
 
   private onKey(e: KeyboardEvent): void {
+    if (document.activeElement?.tagName === "INPUT" || document.activeElement?.tagName === "TEXTAREA") {
+      return;
+    }
     const k = e.key;
     if (k === "m" || k === "M") {
       this.toggleMute();

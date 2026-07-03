@@ -20,3 +20,13 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 *.log
+
+# Raw source art packs (large; composed/downscaled copies live in public/assets)
+/Free 2D Cartoon Parallax Background/
+/new_assets/
+
+# Original 320 kbps music masters (the game ships the AAC re-encodes in public/assets)
+/audio-originals/
+
+# Player saves database
+/saves/

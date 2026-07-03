@@ -14,10 +14,12 @@ export const TileGid = {
   Used: 6, // solid — spent block (Milestone 4)
   Spike: 7, // hazard — damages on touch (Milestone 4)
   Plate: 8, // solid — metal platform variant
+  Quicksand: 9, // special — non-solid; the player wades in and slowly sinks
+  Ice: 10, // solid — slippery surface (reduced grip while standing on it)
 } as const;
 
 /** Total number of tiles in the generated tileset (texture grid columns). */
-export const TILE_COUNT = 8;
+export const TILE_COUNT = 10;
 
 /** Tile GIDs the player physically collides with. */
 export const SOLID_TILES: number[] = [
@@ -28,6 +30,7 @@ export const SOLID_TILES: number[] = [
   TileGid.Lucky,
   TileGid.Used,
   TileGid.Plate,
+  TileGid.Ice,
 ];
 
 /** Tile GIDs that deal damage on contact (handled from Milestone 4). */

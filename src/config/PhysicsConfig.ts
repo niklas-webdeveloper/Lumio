@@ -66,6 +66,38 @@ export const Physics = {
   // ----- Stomp (used from Milestone 5) -----
   /** Upward bounce given to the player after stomping an enemy. */
   STOMP_BOUNCE_VELOCITY: -380,
+  /**
+   * How far the player's feet were allowed to be above the enemy's head on
+   * the previous physics step to still count as "landed from above". Checked
+   * against the *previous* step (not the current, post-overlap position) so
+   * that a fast fall — which can tunnel several pixels into the enemy in a
+   * single step — doesn't get misread as a side hit.
+   */
+  STOMP_TOLERANCE_PX: 6,
+
+  // ----- Ducking (crouch) -----
+  /** Top horizontal speed while ducking — slower than a walk, but mobile. */
+  CROUCH_SPEED: 80,
+
+  // ----- Surface mechanics (per-tile physics overrides) -----
+  /** Ground acceleration while standing on ice (much less grip). */
+  ICE_ACCEL: 380,
+  /** Deceleration toward 0 on ice with no input — a long, slick glide. */
+  ICE_FRICTION: 90,
+  /** Turn-around boost is disabled on ice (multiplier applied instead). */
+  ICE_TURN_MULTIPLIER: 1.0,
+  /** Max sink rate while wading in quicksand (px/s, downward). */
+  QUICKSAND_SINK_SPEED: 32,
+  /** Horizontal speed cap while in quicksand (wading is slow). */
+  QUICKSAND_MAX_SPEED: 70,
+  /** Jump impulse multiplier when jumping out of quicksand. */
+  QUICKSAND_JUMP_MULTIPLIER: 0.95,
+
+  // ----- Ground pound (down-slam) -----
+  /** Brief hang while the slam winds up (velocity frozen), in ms. */
+  GROUND_POUND_CHARGE_MS: 110,
+  /** Downward slam speed during a ground pound (exceeds normal terminal). */
+  GROUND_POUND_SPEED: 1000,
 } as const;
 
 /**

@@ -26,6 +26,13 @@ export interface LoadedLevel {
 const TERRAIN_LAYER = "terrain";
 const SPAWN_LAYER = "spawns";
 const TILESET_NAME = "terrain"; // must match the tileset name inside the JSON
+/**
+ * The shipped tileset image (public/assets/tilesets/terrain.png) is extruded:
+ * every 32px tile carries a 2px border of repeated edge pixels so nothing
+ * bleeds at tile seams. Phaser reads that layout as margin 2 / spacing 4.
+ */
+const TILESET_MARGIN = 2;
+const TILESET_SPACING = 4;
 
 /**
  * Builds a playable level from a Tiled JSON definition:
@@ -47,7 +54,14 @@ export class LevelLoader {
     }
 
     const map = scene.make.tilemap({ key: level.key });
-    const tileset = map.addTilesetImage(TILESET_NAME, TextureKeys.Tiles, 32, 32, 0, 0);
+    const tileset = map.addTilesetImage(
+      TILESET_NAME,
+      TextureKeys.Tiles,
+      32,
+      32,
+      TILESET_MARGIN,
+      TILESET_SPACING
+    );
     if (!tileset) {
       throw new Error(`Failed to add tileset "${TILESET_NAME}" for ${level.key}`);
     }

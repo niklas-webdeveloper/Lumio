@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { TextureKeys } from "@/config/AssetKeys";
+import { TextureKeys, EnemyAnim } from "@/config/AssetKeys";
 import { TILE_COUNT } from "@/config/Tiles";
 import { GAME_WIDTH, GAME_HEIGHT, TILE_SIZE } from "@/config/GameConfig";
 
@@ -402,46 +402,187 @@ function createPlodder(scene: Phaser.Scene): void {
   g.destroy();
 }
 
-/** Snapvine: a biting plant head on a short stem (origin centered). */
-function createSnapvine(scene: Phaser.Scene): void {
-  if (scene.textures.exists(TextureKeys.Snapvine)) return;
-  const w = 26;
-  const h = 40;
-  const g = scene.make.graphics({ x: 0, y: 0 }, false);
-  // stem
-  px(g, 11, 22, 4, 18, 0x1f6629); // darker stem shadow
-  px(g, 11, 22, 2, 18, 0x48b558); // stem highlight
-  // leaves with shading
-  g.fillStyle(0x195422, 1); // leaf shadow
-  g.fillTriangle(6, 27, 13, 23, 13, 31);
-  g.fillTriangle(20, 27, 13, 23, 13, 31);
-  g.fillStyle(0x329640, 1);
-  g.fillTriangle(7, 26, 13, 22, 13, 30);
-  g.fillTriangle(19, 26, 13, 22, 13, 30);
-  g.fillStyle(0x50c762, 1); // leaf highlight
-  g.fillTriangle(7, 26, 10, 24, 13, 30);
-  g.fillTriangle(19, 26, 16, 24, 13, 30);
-  // head bulb
-  g.fillStyle(0xad1b2c, 1); // dark red base
-  g.fillEllipse(w / 2, 15, 26, 28);
-  g.fillStyle(0xe23b4e, 1); // mid red
-  g.fillEllipse(w / 2, 14, 24, 26);
-  g.fillStyle(0xff7589, 1); // highlight reflection
-  g.fillEllipse(w / 2 - 3, 9, 10, 10);
-  // mouth
-  g.fillStyle(0x29050b, 1); // deeper mouth
-  g.fillEllipse(w / 2, 16, 16, 12);
-  g.fillStyle(0x5c0f1c, 1); // inner mouth
-  g.fillEllipse(w / 2, 16, 14, 10);
-  // teeth (white triangles top & bottom)
-  g.fillStyle(0xffffff, 1);
-  for (let i = 0; i < 3; i++) {
-    const tx = 7 + i * 6;
-    g.fillTriangle(tx, 12, tx + 3, 17, tx + 6, 12); // upper sharper
-    g.fillTriangle(tx, 20, tx + 3, 15, tx + 6, 20); // lower sharper
+// Snapvine palette: classic piranha-plant look — red spotted bulb, white jaws.
+const SV_OUT = 0x1c1310; // dark outline
+const SV_RED = 0xc22a10;
+const SV_RED_D = 0x86170a;
+const SV_RED_H = 0xe8563c;
+const SV_WHITE = 0xf4f2ec;
+const SV_WHITE_D = 0xc7c4ba;
+const SV_GREEN = 0x2aa03c;
+const SV_GREEN_D = 0x17632a;
+const SV_GREEN_H = 0x66d876;
+
+/** Stem + drooping leaf pair shared by every Snapvine animation frame. */
+function paintSnapvineStem(g: Phaser.GameObjects.Graphics, cx: number, stemTop: number, stemH: number): void {
+  px(g, cx - 3, stemTop, 6, stemH, SV_GREEN_D);
+  px(g, cx - 3, stemTop, 3, stemH, SV_GREEN);
+  px(g, cx - 3, stemTop, 1, stemH, SV_GREEN_H);
+  // two long leaves arching out from the base of the stem
+  const ly = stemTop + stemH - 4;
+  g.fillStyle(SV_GREEN_D, 1);
+  g.fillTriangle(cx - 14, ly - 5, cx - 3, ly - 2, cx - 3, ly + 4);
+  g.fillTriangle(cx + 14, ly - 5, cx + 3, ly - 2, cx + 3, ly + 4);
+  g.fillStyle(SV_GREEN, 1);
+  g.fillTriangle(cx - 13, ly - 4, cx - 3, ly - 1, cx - 3, ly + 3);
+  g.fillTriangle(cx + 13, ly - 4, cx + 3, ly - 1, cx + 3, ly + 3);
+  g.fillStyle(SV_GREEN_H, 1);
+  g.fillTriangle(cx - 12, ly - 4, cx - 6, ly - 2, cx - 4, ly + 1);
+  g.fillTriangle(cx + 12, ly - 4, cx + 6, ly - 2, cx + 4, ly + 1);
+}
+
+/** Red spotted bulb (the head/cup). `bw`/`bh` are the full ellipse sizes. */
+function paintSnapvineBulb(
+  g: Phaser.GameObjects.Graphics,
+  cx: number,
+  cy: number,
+  bw: number,
+  bh: number
+): void {
+  g.fillStyle(SV_OUT, 1);
+  g.fillEllipse(cx, cy, bw + 3, bh + 3);
+  g.fillStyle(SV_RED_D, 1);
+  g.fillEllipse(cx, cy, bw, bh);
+  g.fillStyle(SV_RED, 1);
+  g.fillEllipse(cx - 1, cy - 1, bw - 4, bh - 4);
+  g.fillStyle(SV_RED_H, 1);
+  g.fillEllipse(cx - bw * 0.2, cy - bh * 0.2, bw * 0.3, bh * 0.24);
+  // trademark white spots
+  g.fillStyle(SV_WHITE, 1);
+  g.fillCircle(cx - 6, cy + 2, 2.6);
+  g.fillCircle(cx + 5, cy + 4, 3.1);
+  g.fillCircle(cx + 8, cy - 3, 2.0);
+  g.fillCircle(cx - 9, cy - 3, 1.8);
+  g.fillCircle(cx, cy + bh * 0.32, 1.6);
+  g.fillStyle(SV_WHITE_D, 1);
+  g.fillCircle(cx + 1, cy - 1, 1.4);
+}
+
+/**
+ * One white jaw of the open trap: a thick strip from the mouth centre out to
+ * `(dx, dy)`, dark-outlined, with small teeth serrating the edge that faces
+ * the V-shaped opening. `dx < 0` draws the left jaw, `dx > 0` the right one.
+ */
+function paintSnapvineJaw(
+  g: Phaser.GameObjects.Graphics,
+  cx: number,
+  mouthY: number,
+  dx: number,
+  dy: number
+): void {
+  const s = Math.sign(dx);
+  const pts = [
+    new Phaser.Geom.Point(cx, mouthY + 4), // bottom, at the mouth centre
+    new Phaser.Geom.Point(cx + dx, mouthY + dy + 5), // bottom of the tip
+    new Phaser.Geom.Point(cx + dx - s, mouthY + dy - 6), // top of the tip
+    new Phaser.Geom.Point(cx - s * 2, mouthY - 7), // top, at the mouth centre
+  ];
+  g.fillStyle(SV_WHITE, 1);
+  g.fillPoints(pts, true);
+  g.lineStyle(2, SV_OUT, 1);
+  g.strokePoints(pts, true, true);
+  g.lineStyle(0, 0, 0);
+  // shading along the underside
+  g.fillStyle(SV_WHITE_D, 1);
+  g.fillTriangle(pts[0].x, pts[0].y, pts[1].x, pts[1].y, pts[0].x + s * 3, pts[0].y - 4);
+  // teeth along the top edge, pointing into the V opening
+  g.fillStyle(SV_WHITE, 1);
+  const [bx, by] = [pts[3].x, pts[3].y];
+  const [ex, ey] = [pts[2].x - bx, pts[2].y - by];
+  for (const t of [0.25, 0.55, 0.82]) {
+    const tx = bx + ex * t;
+    const ty = by + ey * t;
+    g.fillTriangle(tx, ty, tx + ex * 0.2, ty + ey * 0.2, tx + ex * 0.1 - s * 4, ty - 5);
   }
-  g.generateTexture(TextureKeys.Snapvine, w, h);
-  g.destroy();
+}
+
+/** Idle head: the red bulb with the white jaws resting shut across the top. */
+function paintSnapvineClosedHead(g: Phaser.GameObjects.Graphics, cx: number, stemTop: number): void {
+  const cy = stemTop - 12;
+  paintSnapvineBulb(g, cx, cy, 26, 24);
+  // closed white jaws: a flattened lens capping the bulb, seam serrated
+  g.fillStyle(SV_OUT, 1);
+  g.fillEllipse(cx, cy - 8, 26, 13);
+  g.fillStyle(SV_WHITE_D, 1);
+  g.fillEllipse(cx, cy - 8, 23, 10);
+  g.fillStyle(SV_WHITE, 1);
+  g.fillEllipse(cx, cy - 10, 23, 7);
+  px(g, cx - 10, cy - 8, 20, 1, SV_OUT); // seam between the shut jaws
+  g.fillStyle(SV_OUT, 1);
+  for (const tx of [cx - 8, cx - 2, cx + 4]) {
+    g.fillTriangle(tx, cy - 8, tx + 2, cy - 5, tx + 4, cy - 8);
+  }
+}
+
+/** Bite pose: red cup below, dark throat, two white jaws spread in a V. */
+function paintSnapvineOpenHead(
+  g: Phaser.GameObjects.Graphics,
+  cx: number,
+  mouthY: number,
+  fullyOpen: boolean
+): void {
+  paintSnapvineBulb(g, cx, mouthY + 9, 26, 22);
+  g.fillStyle(0x2a0503, 1); // throat cavity in the cup's opening
+  g.fillEllipse(cx, mouthY + 3, 17, 9);
+  if (fullyOpen) {
+    g.fillStyle(0xd8453f, 1); // tongue
+    g.fillEllipse(cx, mouthY + 4, 8, 5);
+  }
+  const lift = fullyOpen ? 17 : 10;
+  const tipDx = fullyOpen ? 13 : 10;
+  paintSnapvineJaw(g, cx, mouthY, -tipDx, -lift);
+  paintSnapvineJaw(g, cx, mouthY, tipDx, -lift);
+}
+
+/**
+ * Draws one Snapvine animation frame into `g`. `stage` 0 is the idle, fully
+ * closed bulb; 1/2 are increasingly wide bite poses — the white jaws spread
+ * into the trademark V above the red cup. Canvas height grows with the stage
+ * so the extra reach has headroom without shifting the feet anchor.
+ */
+function paintSnapvineFrame(
+  g: Phaser.GameObjects.Graphics,
+  w: number,
+  h: number,
+  stage: 0 | 1 | 2
+): void {
+  const cx = w / 2;
+  const stemTop = h - 14;
+  paintSnapvineStem(g, cx, stemTop, 14);
+  if (stage === 0) {
+    paintSnapvineClosedHead(g, cx, stemTop);
+    return;
+  }
+  paintSnapvineOpenHead(g, cx, stemTop - 20, stage === 2);
+}
+
+/** Snapvine: a biting plant that lives in a pipe (origin anchored at the feet). */
+function createSnapvine(scene: Phaser.Scene): void {
+  const build = (key: string, w: number, h: number, stage: 0 | 1 | 2) => {
+    if (scene.textures.exists(key)) return;
+    const g = scene.make.graphics({ x: 0, y: 0 }, false);
+    paintSnapvineFrame(g, w, h, stage);
+    g.generateTexture(key, w, h);
+    g.destroy();
+  };
+  build(TextureKeys.Snapvine, 30, 46, 0);
+  build(TextureKeys.SnapvineMid, 32, 58, 1);
+  build(TextureKeys.SnapvineOpen, 34, 68, 2);
+
+  if (!scene.anims.exists(EnemyAnim.snapvineBite)) {
+    scene.anims.create({
+      key: EnemyAnim.snapvineBite,
+      frameRate: 10,
+      repeat: -1,
+      frames: [
+        { key: TextureKeys.Snapvine, duration: 220 },
+        { key: TextureKeys.SnapvineMid, duration: 90 },
+        { key: TextureKeys.SnapvineOpen, duration: 380 },
+        { key: TextureKeys.SnapvineMid, duration: 90 },
+        { key: TextureKeys.Snapvine, duration: 260 },
+      ],
+    });
+  }
 }
 
 /** Pipe: a green obstacle with a hollow mouth the Snapvine emerges from. */
@@ -486,29 +627,35 @@ function createEntityBlocks(scene: Phaser.Scene): void {
   gen(TextureKeys.UsedBlock, paintUsed);
 }
 
-/** Goal beacon: a pole with a pennant and a glowing top, drawn once. */
+/** Goal beacon: a pole with a glowing top, drawn once. The pennant is a
+ * separate texture so it can slide down the pole with the player. */
 function createBeacon(scene: Phaser.Scene): void {
-  if (scene.textures.exists(TextureKeys.Beacon)) return;
-  const w = 40;
-  const h = 200;
-  const g = scene.make.graphics({ x: 0, y: 0 }, false);
-  // pole
-  px(g, 16, 8, 5, h - 8, 0xc7cdd8);
-  px(g, 16, 8, 2, h - 8, 0xeef1f6); // highlight
-  // base
-  px(g, 8, h - 10, 22, 10, 0x6f7d96);
-  // glowing orb on top
-  g.fillStyle(0x9be35a, 1);
-  g.fillCircle(18, 8, 7);
-  g.fillStyle(0xffffff, 0.7);
-  g.fillCircle(16, 6, 2);
-  // pennant
-  g.fillStyle(0xff5d73, 1);
-  g.fillTriangle(21, 16, 39, 26, 21, 36);
-  g.fillStyle(0xffffff, 0.25);
-  g.fillTriangle(21, 16, 30, 21, 21, 26);
-  g.generateTexture(TextureKeys.Beacon, w, h);
-  g.destroy();
+  if (!scene.textures.exists(TextureKeys.Beacon)) {
+    const w = 40;
+    const h = 200;
+    const g = scene.make.graphics({ x: 0, y: 0 }, false);
+    // pole
+    px(g, 16, 8, 5, h - 8, 0xc7cdd8);
+    px(g, 16, 8, 2, h - 8, 0xeef1f6); // highlight
+    // base
+    px(g, 8, h - 10, 22, 10, 0x6f7d96);
+    // glowing orb on top
+    g.fillStyle(0x9be35a, 1);
+    g.fillCircle(18, 8, 7);
+    g.fillStyle(0xffffff, 0.7);
+    g.fillCircle(16, 6, 2);
+    g.generateTexture(TextureKeys.Beacon, w, h);
+    g.destroy();
+  }
+  if (!scene.textures.exists(TextureKeys.BeaconFlag)) {
+    const g = scene.make.graphics({ x: 0, y: 0 }, false);
+    g.fillStyle(0xff5d73, 1);
+    g.fillTriangle(0, 0, 18, 10, 0, 20);
+    g.fillStyle(0xffffff, 0.25);
+    g.fillTriangle(0, 0, 9, 5, 0, 10);
+    g.generateTexture(TextureKeys.BeaconFlag, 19, 21);
+    g.destroy();
+  }
 }
 
 

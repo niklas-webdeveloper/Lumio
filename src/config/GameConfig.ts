@@ -69,9 +69,14 @@ export function createGameConfig(
       },
     },
     render: {
-      antialias: true,
-      antialiasGL: true,
+      antialias: true, // linear texture filtering — keeps sprites/text smooth
+      // MSAA does nothing for textured 2D quads (edges come from texture alpha,
+      // and the canvas is already 3× supersampled) but multiplies GPU work —
+      // a major source of fan noise/heat on laptops. Visually identical off.
+      antialiasGL: false,
       roundPixels: false,
+      // Prefer the integrated/efficiency GPU; the game has plenty of headroom.
+      powerPreference: "low-power",
     },
     fps: {
       target: 60,

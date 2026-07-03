@@ -24,7 +24,8 @@ export const TextureKeys = {
   MenuBg: "tex_menubg", // sleek modern gradient backdrop for menus
   HillsFar: "tex_hills_far", // parallax: distant foliage (tiled)
   HillsNear: "tex_hills_near", // parallax: closer foliage (tiled)
-  Beacon: "tex_beacon", // level-end goal marker
+  Beacon: "tex_beacon", // level-end goal marker (pole only)
+  BeaconFlag: "tex_beacon_flag", // the pennant, separate so it can slide down
   // Interactive entities (standalone sprite textures)
   LuckyBlock: "tex_lucky", // "?" block (active)
   Brick: "tex_brick", // breakable brick
@@ -33,12 +34,23 @@ export const TextureKeys = {
   Growcap: "tex_growcap", // grow power-up
   // Enemies & obstacles
   Plodder: "tex_plodder", // walking enemy
-  Snapvine: "tex_snapvine", // piranha-style plant
+  Vulture: "tex_vulture", // desert flyer, sine-wave patrol
+  BatHang: "tex_bat_hang", // graveyard bat, dormant (hanging) pose
+  BatFly: "tex_bat_fly", // graveyard bat, awake chase flight
+  Icicle: "tex_icicle", // falling ceiling hazard (snow)
+  Snapvine: "tex_snapvine", // piranha-style plant, mouth closed (idle)
+  SnapvineMid: "tex_snapvine_mid", // piranha-style plant, mouth half-open (bite anim)
+  SnapvineOpen: "tex_snapvine_open", // piranha-style plant, mouth wide open (bite anim peak)
   Pipe: "tex_pipe", // pipe obstacle / plant housing
   // Particle bits
   Spark: "tex_spark", // coin/sparkle particle
   Crumb: "tex_crumb", // brick-fragment particle
   Puff: "tex_puff", // stomp/dust particle
+} as const;
+
+/** Animation keys for procedurally generated (frame-swapped) enemy art. */
+export const EnemyAnim = {
+  snapvineBite: "snapvine-bite",
 } as const;
 
 // Player character art now comes from loaded sprite sheets — see
