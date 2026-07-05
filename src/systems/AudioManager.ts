@@ -23,10 +23,14 @@ type Wave = OscillatorType;
  * Browsers block audio until a user gesture, so call `unlock()` from the first
  * key/pointer event; everything is a no-op until then and never throws.
  */
+/** Master gain when SFX are at full volume and unmuted (leaves headroom). */
+const SFX_BASE_GAIN = 0.6;
+
 class AudioManager {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
   private muted = false;
+  private sfxVolume = 1;
   private musicTimer: ReturnType<typeof setInterval> | null = null;
   private musicStep = 0;
   private initialized = false;
@@ -43,7 +47,8 @@ class AudioManager {
         this.ctx = new Ctor();
         this.master = this.ctx.createGain();
         this.muted = saveState.isMuted();
-        this.master.gain.value = this.muted ? 0 : 0.6;
+        this.sfxVolume = saveState.getSfxVolume();
+        this.master.gain.value = this.currentGain();
         this.master.connect(this.ctx.destination);
         this.initialized = true;
       } catch {
@@ -57,12 +62,40 @@ class AudioManager {
     return this.muted;
   }
 
+  /** Effective master gain, honouring both the mute flag and the SFX volume. */
+  private currentGain(): number {
+    return this.muted ? 0 : SFX_BASE_GAIN * this.sfxVolume;
+  }
+
   /** Toggle mute, persist it, and return the new state. */
   toggleMute(): boolean {
     this.muted = !this.muted;
-    if (this.master) this.master.gain.value = this.muted ? 0 : 0.6;
+    if (this.master) this.master.gain.value = this.currentGain();
     saveState.setMuted(this.muted);
     return this.muted;
+  }
+
+  /**
+   * Re-read the persisted mute + SFX volume into the live audio graph. `unlock()`
+   * captures these on the first user gesture, which happens *before* the player's
+   * save has loaded from the backend — call this once the save is in to apply it.
+   */
+  syncFromSave(): void {
+    this.muted = saveState.isMuted();
+    this.sfxVolume = saveState.getSfxVolume();
+    if (this.master) this.master.gain.value = this.currentGain();
+  }
+
+  /** Current sound-effects volume, 0..1. */
+  getSfxVolume(): number {
+    return this.sfxVolume;
+  }
+
+  /** Set (and persist) the sound-effects volume, applying it live. */
+  setSfxVolume(volume: number): void {
+    this.sfxVolume = Math.max(0, Math.min(1, volume));
+    if (this.master) this.master.gain.value = this.currentGain();
+    saveState.setSfxVolume(this.sfxVolume);
   }
 
   // ----- SFX -----

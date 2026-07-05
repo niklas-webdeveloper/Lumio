@@ -1253,4 +1253,111 @@
   }
 }
 
+/* ===========================================================================
+   Settings dialog (music / SFX volume)
+   =========================================================================== */
+
+/* Gear icon button — inline SVG glyph tinted like the touch toggle. */
+.icon-btn.settings-btn svg {
+  stroke: var(--gold-soft);
+  filter: drop-shadow(0 0.2vmin 0.2vmin rgba(0, 0, 0, 0.4));
+  transition: stroke 0.15s ease, transform 0.2s ease;
+}
+.icon-btn.settings-btn:hover svg {
+  stroke: var(--gold);
+  transform: rotate(35deg);
+}
+
+.settings-panel {
+  width: 66vmin;
+  min-height: 0;
+  gap: 3vmin;
+}
+
+.settings-row {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 1.2vmin;
+}
+.settings-label {
+  display: flex;
+  align-items: center;
+  gap: 1.4vmin;
+  font-family: "Baloo 2", sans-serif;
+  font-weight: 800;
+  font-size: 3vmin;
+  color: var(--cream);
+  -webkit-text-stroke: 0.35vmin var(--ink);
+  paint-order: stroke fill;
+  text-shadow: 0 0.25vmin 0 rgba(0, 0, 0, 0.3);
+}
+.settings-label svg {
+  stroke: var(--gold-soft);
+  flex: none;
+}
+
+.settings-control {
+  display: flex;
+  align-items: center;
+  gap: 2vmin;
+}
+
+/* Themed range slider: gold fill up to the thumb, dark track after. */
+.settings-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  flex: 1;
+  height: 2.2vmin;
+  border-radius: 1.1vmin;
+  background: linear-gradient(
+    90deg,
+    var(--gold) 0%,
+    var(--gold-soft) var(--fill, 100%),
+    rgba(8, 30, 38, 0.7) var(--fill, 100%),
+    rgba(8, 30, 38, 0.7) 100%
+  );
+  border: 0.3vmin solid rgba(0, 0, 0, 0.35);
+  box-shadow: inset 0 0.3vmin 0.5vmin rgba(0, 0, 0, 0.4);
+  outline: none;
+  cursor: pointer;
+}
+.settings-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 4.2vmin;
+  height: 4.2vmin;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #fff6dc, var(--gold) 55%, var(--gold-deep));
+  border: 0.4vmin solid var(--ink);
+  box-shadow: 0 0.4vmin 0.6vmin rgba(0, 20, 30, 0.45);
+  cursor: grab;
+  transition: transform 0.09s ease;
+}
+.settings-slider::-webkit-slider-thumb:active {
+  transform: scale(0.92);
+  cursor: grabbing;
+}
+.settings-slider::-moz-range-thumb {
+  width: 4.2vmin;
+  height: 4.2vmin;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #fff6dc, var(--gold) 55%, var(--gold-deep));
+  border: 0.4vmin solid var(--ink);
+  box-shadow: 0 0.4vmin 0.6vmin rgba(0, 20, 30, 0.45);
+  cursor: grab;
+}
+
+.settings-pct {
+  flex: none;
+  width: 8vmin;
+  text-align: right;
+  font-family: "Baloo 2", sans-serif;
+  font-weight: 800;
+  font-size: 2.8vmin;
+  color: var(--gold-soft);
+  -webkit-text-stroke: 0.3vmin var(--ink);
+  paint-order: stroke fill;
+}
+
 

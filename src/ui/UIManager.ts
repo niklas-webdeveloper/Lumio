@@ -192,6 +192,7 @@ class UIManager {
     this.buildHud();
     this.buildTouchControls();
 
+    this.applyMusicVolume();
     this.assetsReady = this.preloadImages();
     window.addEventListener("keydown", (e) => this.onKey(e));
   }
@@ -428,6 +429,20 @@ class UIManager {
     return b;
   }
 
+  /** A round gear icon button that opens the settings dialog (inline SVG glyph). */
+  private settingsButton(): HTMLButtonElement {
+    const b = el("button", "icon-btn small settings-btn");
+    b.title = "Einstellungen";
+    b.innerHTML = `
+      <svg viewBox="0 0 24 24" width="100%" height="100%" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: block;">
+        <circle cx="12" cy="12" r="3.2"></circle>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+      </svg>
+    `;
+    b.onclick = () => this.showSettings();
+    return b;
+  }
+
   // ---------- Home ----------
 
   private buildHome(): void {
@@ -436,6 +451,7 @@ class UIManager {
     const tools = el("div", "corner-tools");
     tools.appendChild(this.touchToggleButton());
     tools.appendChild(this.muteButton());
+    tools.appendChild(this.settingsButton());
 
     const title = el("div", "title", "LUMIO'S LEAP");
     const sub = el("div", "subtitle", "a bright platforming adventure");
@@ -488,7 +504,7 @@ class UIManager {
     this.hideAll();
     this.closeOverlays();
     this.revealScreen(this.screens.home);
-    this.refreshMuteIcon();
+    this.syncAudioFromSave();
     this.setContext("home");
     // First time here: fade the boot splash away to reveal the ready menu.
     this.hideSplash();
@@ -853,7 +869,7 @@ class UIManager {
     time.innerHTML = `<span class="ico">${this.icoTag("timer")}</span><span class="val" id="hud-time">0:00</span>`;
     const tools = el("div", "hud-right");
     const pause = this.iconButton("pause", () => this.requestPause());
-    tools.append(pause, this.touchToggleButton(), this.muteButton());
+    tools.append(pause, this.touchToggleButton(), this.muteButton(), this.settingsButton());
     right.append(level, time, tools);
 
     hud.append(left, right);
@@ -1239,13 +1255,154 @@ class UIManager {
     for (const im of this.muteImgs) im.src = src;
   }
 
+  /** Apply the persisted music volume to Phaser's global sound manager. */
+  private applyMusicVolume(): void {
+    if (this.game) this.game.sound.volume = saveState.getMusicVolume();
+  }
+
+  /**
+   * Push the just-loaded save's audio settings (mute + both volumes) into the
+   * live audio engines. Called after login, since the save arrives after the
+   * audio graph is first unlocked.
+   */
+  private syncAudioFromSave(): void {
+    audioManager.syncFromSave();
+    this.game.sound.mute = audioManager.isMuted();
+    this.applyMusicVolume();
+    this.refreshMuteIcon();
+  }
+
+  // ---------- Settings ----------
+
+  /**
+   * Open the settings dialog (music + SFX volume). Rendered as its own overlay
+   * stacked over whatever is on screen, so it never destroys an underlying pause
+   * panel. If opened during live gameplay it freezes the scene until closed.
+   */
+  showSettings(): void {
+    // Adjusting SFX volume should be audible immediately — make sure audio is live.
+    audioManager.unlock();
+
+    const gs = this.game.scene.getScene(SceneKeys.Game) as unknown as { canPause?: boolean };
+    if (
+      this.ctx === "game" &&
+      this.game.scene.isActive(SceneKeys.Game) &&
+      !this.game.scene.isPaused(SceneKeys.Game) &&
+      gs?.canPause !== false
+    ) {
+      this.game.scene.pause(SceneKeys.Game);
+      this.game.sound.pauseAll();
+      this.settingsResume = () => {
+        this.game.scene.resume(SceneKeys.Game);
+        this.game.sound.resumeAll();
+      };
+    }
+
+    const o = el("div", "ui-overlay settings-overlay");
+    const p = el("div", "panel teal settings-panel");
+    p.appendChild(el("div", "panel-title", "OPTIONEN"));
+
+    p.appendChild(
+      this.volumeRow("music", "Musik", saveState.getMusicVolume(), (v) => {
+        saveState.setMusicVolume(v);
+        this.applyMusicVolume();
+      })
+    );
+    p.appendChild(
+      this.volumeRow(
+        "sfx",
+        "Effekte",
+        saveState.getSfxVolume(),
+        (v) => audioManager.setSfxVolume(v),
+        () => audioManager.play("coin") // preview on release
+      )
+    );
+
+    const back = button("ZURÜCK", "blue");
+    back.onclick = () => this.closeSettings();
+    p.appendChild(back);
+
+    o.appendChild(p);
+    // Click on the dimmed backdrop (outside the panel) closes the dialog.
+    o.onclick = (e) => {
+      if (e.target === o) this.closeSettings();
+    };
+    this.root.appendChild(o);
+  }
+
+  /** Callback that un-freezes gameplay when the settings dialog was opened over it. */
+  private settingsResume: (() => void) | null = null;
+
+  private closeSettings(): void {
+    const open = this.root.querySelectorAll(".settings-overlay");
+    if (open.length === 0) return;
+    open.forEach((o) => o.remove());
+    if (this.settingsResume) {
+      const resume = this.settingsResume;
+      this.settingsResume = null;
+      resume();
+    }
+  }
+
+  /**
+   * A labelled volume slider (icon label + range + live percentage). `onChange`
+   * fires continuously while dragging; the optional `onRelease` fires once the
+   * drag ends (used to play a preview sound at the new level).
+   */
+  private volumeRow(
+    icon: "music" | "sfx",
+    label: string,
+    initial: number,
+    onChange: (v: number) => void,
+    onRelease?: () => void
+  ): HTMLElement {
+    const row = el("div", "settings-row");
+
+    const glyph = icon === "music"
+      ? `<path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle>`
+      : `<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.5 8.5a5 5 0 0 1 0 7"></path><path d="M19 5a9 9 0 0 1 0 14"></path>`;
+    const lbl = el("div", "settings-label");
+    lbl.innerHTML = `
+      <svg viewBox="0 0 24 24" width="3.4vmin" height="3.4vmin" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${glyph}</svg>
+      <span>${label}</span>`;
+
+    const control = el("div", "settings-control");
+    const input = el("input", "settings-slider") as HTMLInputElement;
+    input.type = "range";
+    input.min = "0";
+    input.max = "100";
+    input.step = "1";
+    input.value = String(Math.round(initial * 100));
+
+    const pct = el("div", "settings-pct", `${input.value}%`);
+    const paint = () => input.style.setProperty("--fill", `${input.value}%`);
+    paint();
+
+    input.oninput = () => {
+      pct.textContent = `${input.value}%`;
+      paint();
+      onChange(Number(input.value) / 100);
+    };
+    if (onRelease) input.onchange = () => onRelease();
+
+    control.append(input, pct);
+    row.append(lbl, control);
+    return row;
+  }
+
   // ---------- Keyboard ----------
 
   private onKey(e: KeyboardEvent): void {
+    const k = e.key;
+    // The settings dialog is modal: Escape closes it and swallows other keys so
+    // they can't leak into the game/menu behind it.
+    if (this.root.querySelector(".settings-overlay")) {
+      if (k === "Escape") this.closeSettings();
+      return;
+    }
     if (document.activeElement?.tagName === "INPUT" || document.activeElement?.tagName === "TEXTAREA") {
       return;
     }
-    const k = e.key;
     if (k === "m" || k === "M") {
       this.toggleMute();
       return;

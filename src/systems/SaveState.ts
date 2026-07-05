@@ -19,6 +19,10 @@ export interface SaveData {
   unlockedLevel: number;
   highScore: number;
   muted: boolean;
+  /** Background-music volume, 0..1. */
+  musicVolume: number;
+  /** Sound-effects volume, 0..1. */
+  sfxVolume: number;
   /** Best star rating (0..3) earned per level index. */
   levelStars: number[];
   /** Best (lowest) completion time in seconds per level index; 0 = none yet. */
@@ -33,6 +37,8 @@ const DEFAULT_SAVE: SaveData = {
   unlockedLevel: 0,
   highScore: 0,
   muted: false,
+  musicVolume: 1,
+  sfxVolume: 1,
   levelStars: [],
   bestTimes: [],
   bestCoins: [],
@@ -86,6 +92,9 @@ class SaveState {
     this.cache.bestCoins = (this.cache.bestCoins ?? []).map((v) => v ?? 0);
     // Older saves predate the marathon mode — normalize the missing field.
     this.cache.bestMarathon = this.cache.bestMarathon ?? null;
+    // Older saves predate per-channel volume — default to full volume.
+    this.cache.musicVolume = clamp01(this.cache.musicVolume ?? 1);
+    this.cache.sfxVolume = clamp01(this.cache.sfxVolume ?? 1);
   }
 
   private persist(): void {
@@ -216,6 +225,31 @@ class SaveState {
     this.load().muted = muted;
     this.persist();
   }
+
+  /** Background-music volume, 0..1. */
+  getMusicVolume(): number {
+    return clamp01(this.load().musicVolume);
+  }
+
+  setMusicVolume(volume: number): void {
+    this.load().musicVolume = clamp01(volume);
+    this.persist();
+  }
+
+  /** Sound-effects volume, 0..1. */
+  getSfxVolume(): number {
+    return clamp01(this.load().sfxVolume);
+  }
+
+  setSfxVolume(volume: number): void {
+    this.load().sfxVolume = clamp01(volume);
+    this.persist();
+  }
+}
+
+/** Clamp a value to the 0..1 range (falling back to 1 for non-finite input). */
+function clamp01(v: number): number {
+  return Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 1;
 }
 
 export const saveState = new SaveState();
