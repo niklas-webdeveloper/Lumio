@@ -4,7 +4,7 @@ import heroUrl from "../../character/character.png";
 import { SceneKeys } from "@/config/AssetKeys";
 import { LEVELS, getLevel, countLevelCoins } from "@/config/levels";
 import { gameState } from "@/systems/GameState";
-import { saveState } from "@/systems/SaveState";
+import { saveState, type MarathonRecord } from "@/systems/SaveState";
 import { audioManager } from "@/systems/AudioManager";
 
 /** Data passed to the level-complete screen. */
@@ -30,6 +30,20 @@ export interface CompleteData {
   coinTotal: number;
 }
 
+/** Data passed to the marathon results screen. */
+export interface MarathonCompleteData {
+  /** Total run time in seconds (includes failed attempts). */
+  timeSec: number;
+  /** Coins collected across the whole run. */
+  coins: number;
+  /** Lives lost during the run. */
+  deaths: number;
+  /** True when this run set a new best time (including the first clear). */
+  newBestRun: boolean;
+  /** Best recorded run (after this one). */
+  best: MarathonRecord | null;
+}
+
 /** Format seconds as m:ss (for the HUD stopwatch and par times). */
 function fmtTime(seconds: number): string {
   const total = Math.floor(seconds);
@@ -47,7 +61,7 @@ function fmtTimePrecise(seconds: number): string {
   return `${m}:${String(whole).padStart(2, "0")}.${tenths}`;
 }
 
-type KeyContext = "home" | "levels" | "pause" | "complete" | "gameover" | "game";
+type KeyContext = "home" | "modes" | "levels" | "pause" | "complete" | "gameover" | "game";
 
 /** Base URL for the Hyper Casual UI kit assets (served from public/). */
 const UI = "/assets/ui";
@@ -139,6 +153,7 @@ class UIManager {
   private muteImgs: HTMLImageElement[] = [];
   private ctx: KeyContext = "home";
   private selectedLevel = 0;
+  private selectedMode = 0;
   private completeLast = false;
 
   private touchControlsEnabled = false;
@@ -172,6 +187,7 @@ class UIManager {
     document.body.appendChild(this.root);
 
     this.buildHome();
+    this.buildModes();
     this.buildLevels();
     this.buildHud();
     this.buildTouchControls();
@@ -432,7 +448,7 @@ class UIManager {
 
     const actions = el("div", "home-actions");
     const play = button("PLAY", "green", { big: true, icon: "play" });
-    play.onclick = () => this.showLevels();
+    play.onclick = () => this.showModes();
     const hi = el("div", "home-hi");
     hi.id = "home-hi";
     hi.appendChild(imgEl("crown"));
@@ -576,7 +592,7 @@ class UIManager {
 
         const container = el("div", "leaderboard-container");
 
-        for (let i = 0; i < 4; i++) {
+        for (let i = 0; i < LEVELS.length; i++) {
           const levelDiv = el("div", "leaderboard-level");
           levelDiv.appendChild(el("div", "leaderboard-level-title", `LEVEL ${i + 1}`));
 
@@ -588,14 +604,14 @@ class UIManager {
           } else {
             levelData.forEach((entry: any, index: number) => {
               const row = el("div", "leaderboard-row");
-              
+
               const rank = el("span", "leaderboard-rank", `${index + 1}.`);
               const name = el("span", "leaderboard-name", entry.username);
               const time = el("span", "leaderboard-time", fmtTimePrecise(entry.time));
-              
+
               const stars = el("span", "leaderboard-stars");
               stars.innerHTML = starsRow(entry.stars);
-              
+
               row.append(rank, name, time, stars);
               list.appendChild(row);
             });
@@ -604,6 +620,31 @@ class UIManager {
           levelDiv.appendChild(list);
           container.appendChild(levelDiv);
         }
+
+        // Marathon board: full-width section below the per-level boards.
+        const maraDiv = el("div", "leaderboard-level marathon");
+        maraDiv.appendChild(el("div", "leaderboard-level-title", "MARATHON"));
+        const maraList = el("div", "leaderboard-list");
+        const maraData = data.marathon || [];
+        if (maraData.length === 0) {
+          maraList.appendChild(el("div", "leaderboard-empty", "Noch kein Run geschafft"));
+        } else {
+          maraData.forEach((entry: any, index: number) => {
+            const row = el("div", "leaderboard-row");
+            const rank = el("span", "leaderboard-rank", `${index + 1}.`);
+            const name = el("span", "leaderboard-name", entry.username);
+            const time = el("span", "leaderboard-time", fmtTimePrecise(entry.time));
+            const meta = el("span", "leaderboard-meta");
+            meta.innerHTML =
+              `${this.icoTag("coin")} ${entry.coins ?? 0}` +
+              `<span class="sep">·</span>` +
+              `${this.icoTag("heart")} −${entry.deaths ?? 0}`;
+            row.append(rank, name, time, meta);
+            maraList.appendChild(row);
+          });
+        }
+        maraDiv.appendChild(maraList);
+        container.appendChild(maraDiv);
 
         p.insertBefore(container, closeBtn);
       })
@@ -616,6 +657,98 @@ class UIManager {
     o.appendChild(p);
   }
 
+  // ---------- Mode select ----------
+
+  private buildModes(): void {
+    const s = el("div", "ui-screen hidden");
+    s.append(el("div", "title", "SPIELMODUS"));
+
+    const grid = el("div", "mode-grid");
+    grid.id = "mode-grid";
+    s.appendChild(grid);
+
+    const back = button("Back", "blue");
+    back.onclick = () => this.showHome();
+    s.appendChild(back);
+    s.appendChild(el("div", "hint", "← → wählen · Enter start · Esc zurück"));
+    this.root.appendChild(s);
+    this.screens.modes = s;
+  }
+
+  /** One selectable card on the mode-select screen. */
+  private modeCard(opts: {
+    icon: string;
+    name: string;
+    desc: string;
+    stats: string;
+    onPick: () => void;
+    marathon?: boolean;
+  }): HTMLElement {
+    const card = el("div", `mode-card${opts.marathon ? " marathon" : ""}`);
+    card.innerHTML =
+      `<div class="mode-icon">${this.icoTag(opts.icon)}</div>` +
+      `<div class="mode-name">${opts.name}</div>` +
+      `<div class="mode-desc">${opts.desc}</div>` +
+      `<div class="mode-stats">${opts.stats}</div>`;
+    card.onclick = opts.onPick;
+    return card;
+  }
+
+  showModes(): void {
+    const grid = this.screens.modes.querySelector("#mode-grid") as HTMLElement;
+    grid.innerHTML = "";
+
+    const classic = this.modeCard({
+      icon: "timer",
+      name: "ZEIT-MODUS",
+      desc: "Wähle ein Level und jage die Bestzeit. Sterne für Coins und Speed.",
+      stats: `${this.icoTag("star")} ${LEVELS.reduce((n, _l, i) => n + saveState.getLevelStars(i), 0)}/${LEVELS.length * 3} Sterne`,
+      onPick: () => this.showLevels(),
+    });
+
+    const best = saveState.getBestMarathon();
+    const marathon = this.modeCard({
+      icon: "crown",
+      name: "MARATHON",
+      desc: `Alle ${LEVELS.length} Level am Stück, 3 Leben für den ganzen Run. Tod = Level neu, die Uhr läuft weiter!`,
+      stats: best
+        ? `${this.icoTag("timer")} Bestzeit ${fmtTimePrecise(best.time)}`
+        : `${this.icoTag("timer")} Noch kein Run geschafft`,
+      onPick: () => this.startMarathon(),
+      marathon: true,
+    });
+
+    classic.onmouseenter = () => this.selectMode(0);
+    marathon.onmouseenter = () => this.selectMode(1);
+    grid.append(classic, marathon);
+    this.selectedMode = 0;
+
+    this.hideAll();
+    this.closeOverlays();
+    this.revealScreen(this.screens.modes);
+    this.setContext("modes");
+    this.highlightMode();
+  }
+
+  private selectMode(i: number): void {
+    this.selectedMode = Math.max(0, Math.min(1, i));
+    this.highlightMode();
+  }
+
+  private highlightMode(): void {
+    const cards = this.screens.modes.querySelectorAll(".mode-card");
+    cards.forEach((c, i) => c.classList.toggle("selected", i === this.selectedMode));
+  }
+
+  startMarathon(): void {
+    gameState.startNewGame(0, "marathon");
+    this.hideAll();
+    this.closeOverlays();
+    this.setContext("game");
+    this.hud.classList.remove("hidden");
+    this.game.scene.start(SceneKeys.Game);
+  }
+
   // ---------- Level select ----------
 
   private buildLevels(): void {
@@ -625,7 +758,7 @@ class UIManager {
     grid.id = "level-grid";
     s.appendChild(grid);
     const back = button("Back", "blue");
-    back.onclick = () => this.showHome();
+    back.onclick = () => this.showModes();
     s.appendChild(back);
     s.appendChild(el("div", "hint", "← → choose · Enter play · Esc back"));
     this.root.appendChild(s);
@@ -761,8 +894,15 @@ class UIManager {
       this.hudEls.coinbar.style.width = `${Math.min(1, coinFrac) * 100}%`;
     }
     this.setHudText("lives", `${Math.max(0, gameState.lives)}`);
-    this.setHudText("level", `Lv ${gameState.levelIndex + 1}`);
-    this.setHudText("time", fmtTime(gameState.timeElapsed));
+    // Marathon: show the run progress and the total run clock (it keeps
+    // counting across levels and failed attempts — that's the leaderboard time).
+    if (gameState.isMarathon) {
+      this.setHudText("level", `Lv ${gameState.levelIndex + 1}/${LEVELS.length}`);
+      this.setHudText("time", fmtTime(gameState.runTime));
+    } else {
+      this.setHudText("level", `Lv ${gameState.levelIndex + 1}`);
+      this.setHudText("time", fmtTime(gameState.timeElapsed));
+    }
   }
 
   private setHudText(key: string, text: string): void {
@@ -876,31 +1016,85 @@ class UIManager {
     return o;
   }
 
+  /** True while the 3-2-1 resume countdown is running (blocks re-entry). */
+  private resuming = false;
+
   requestPause(): void {
+    if (this.resuming) return;
     if (this.ctx !== "game" || !this.game.scene.isActive(SceneKeys.Game)) return;
     const gs = this.game.scene.getScene(SceneKeys.Game) as unknown as { canPause?: boolean };
     if (gs && gs.canPause === false) return;
     this.game.scene.pause(SceneKeys.Game);
+    // The scene pause freezes the timer, but the bgm plays on the global sound
+    // manager and keeps going on its own — pause it explicitly.
+    this.game.sound.pauseAll();
     const o = this.overlay(false);
     const p = el("div", "panel");
     p.append(el("div", "panel-title", "PAUSED"));
     const row = el("div", "row");
     const resume = button("Resume", "green");
     resume.onclick = () => this.resume();
-    const retry = button("Retry", "orange");
-    retry.onclick = () => this.restartLevel();
     const home = button("Home", "blue", { icon: "home" });
     home.onclick = () => this.showHome();
-    row.append(resume, retry, home);
+    if (gameState.isMarathon) {
+      // No free level restart mid-marathon — that would dodge the death rule.
+      row.append(resume, home);
+    } else {
+      const retry = button("Retry", "orange");
+      retry.onclick = () => this.restartLevel();
+      row.append(resume, retry, home);
+    }
     p.appendChild(row);
     o.appendChild(p);
     this.setContext("pause");
   }
 
+  /**
+   * Resume from pause with a 3-2-1 countdown: the pause panel closes, a big
+   * animated counter ticks down over the frozen game frame, then the scene,
+   * timer and music all pick up together on "GO!".
+   */
   resume(): void {
+    if (this.resuming) return;
+    this.resuming = true;
     this.closeOverlays();
-    this.setContext("game");
-    this.game.scene.resume(SceneKeys.Game);
+
+    const o = this.overlay(false);
+    o.classList.add("countdown-overlay");
+    const num = el("div", "countdown-num");
+    o.appendChild(num);
+
+    const steps: Array<{ label: string; ms: number }> = [
+      { label: "3", ms: 800 },
+      { label: "2", ms: 800 },
+      { label: "1", ms: 800 },
+      { label: "GO!", ms: 550 },
+    ];
+    let i = 0;
+    const tick = () => {
+      // Aborted from outside (e.g. Home stopped the game) — don't resume.
+      if (!o.isConnected) {
+        this.resuming = false;
+        return;
+      }
+      if (i >= steps.length) {
+        this.resuming = false;
+        this.closeOverlays();
+        this.setContext("game");
+        this.game.scene.resume(SceneKeys.Game);
+        this.game.sound.resumeAll();
+        return;
+      }
+      const step = steps[i];
+      num.textContent = step.label;
+      num.classList.toggle("go", step.label === "GO!");
+      num.classList.remove("tick");
+      void num.offsetWidth; // restart the pop animation for every number
+      num.classList.add("tick");
+      i += 1;
+      window.setTimeout(tick, step.ms);
+    };
+    tick();
   }
 
   restartLevel(): void {
@@ -967,18 +1161,63 @@ class UIManager {
     this.setContext("complete");
   }
 
+  /** Marathon run finished: total time, deaths and coins for the whole run. */
+  showMarathonComplete(data: MarathonCompleteData): void {
+    this.stopGame();
+    this.completeLast = true; // Enter on this screen goes home
+    this.hud.classList.add("hidden");
+    const o = this.overlay(true);
+    const p = el("div", "panel wide");
+    p.append(el("div", "panel-title", "MARATHON GESCHAFFT!"));
+    p.append(el("div", "muted-text mode-subtitle", `Alle ${LEVELS.length} Level am Stück bezwungen`));
+
+    const timeBox =
+      `<div class="stat-box time"><span class="k">Gesamtzeit</span>` +
+      `<span class="v">${fmtTimePrecise(data.timeSec)}</span>` +
+      (data.newBestRun ? `<span class="badge-record">NEW BEST!</span>` : "") +
+      `</div>`;
+    const bestBox =
+      `<div class="stat-box"><span class="k">Bestzeit</span>` +
+      `<span class="v">${data.best ? fmtTimePrecise(data.best.time) : "-:--"}</span></div>`;
+    const timeRow = el("div", "stat-row");
+    timeRow.innerHTML = timeBox + bestBox;
+    p.appendChild(timeRow);
+
+    const stats = el("div", "stat-row");
+    stats.innerHTML =
+      `<div class="stat-box coins"><span class="k">Coins</span><span class="v">${data.coins}</span></div>` +
+      `<div class="stat-box"><span class="k">Tode</span><span class="v">${data.deaths}</span></div>` +
+      `<div class="stat-box"><span class="k">Score</span><span class="v">${gameState.score}</span></div>`;
+    p.appendChild(stats);
+
+    const row = el("div", "row");
+    const retry = button("Nochmal", "orange");
+    retry.onclick = () => this.startMarathon();
+    const home = button("Home", "blue", { icon: "home" });
+    home.onclick = () => this.showHome();
+    row.append(retry, home);
+    p.appendChild(row);
+    o.appendChild(p);
+    this.setContext("complete");
+  }
+
   showGameOver(): void {
     saveState.recordScore(gameState.score);
     this.stopGame();
     this.hud.classList.add("hidden");
+    const marathon = gameState.isMarathon;
     const o = this.overlay(true);
     const p = el("div", "panel purple");
     p.appendChild(imgEl("banner-defeat", "panel-banner"));
     p.append(el("div", "score", `${gameState.score}`));
-    p.append(el("div", "muted-text", `Best  ${saveState.getHighScore()}`));
+    if (marathon) {
+      p.append(el("div", "muted-text", "Marathon gescheitert — der Run zählt nicht."));
+    } else {
+      p.append(el("div", "muted-text", `Best  ${saveState.getHighScore()}`));
+    }
     const row = el("div", "row");
-    const retry = button("Retry", "orange");
-    retry.onclick = () => this.startLevel(gameState.levelIndex);
+    const retry = button(marathon ? "Neuer Run" : "Retry", "orange");
+    retry.onclick = () => (marathon ? this.startMarathon() : this.startLevel(gameState.levelIndex));
     const home = button("Home", "blue", { icon: "home" });
     home.onclick = () => this.showHome();
     row.append(retry, home);
@@ -1016,13 +1255,21 @@ class UIManager {
         if (k === "p" || k === "P" || k === "Escape") this.requestPause();
         break;
       case "home":
-        if (k === " " || k === "Enter") this.showLevels();
+        if (k === " " || k === "Enter") this.showModes();
+        break;
+      case "modes":
+        if (k === "ArrowLeft" || k === "a") this.selectMode(this.selectedMode - 1);
+        else if (k === "ArrowRight" || k === "d") this.selectMode(this.selectedMode + 1);
+        else if (k === "Enter" || k === " ") {
+          if (this.selectedMode === 0) this.showLevels();
+          else this.startMarathon();
+        } else if (k === "Escape") this.showHome();
         break;
       case "levels":
         if (k === "ArrowLeft" || k === "a") this.selectLevel(this.selectedLevel - 1);
         else if (k === "ArrowRight" || k === "d") this.selectLevel(this.selectedLevel + 1);
         else if (k === "Enter" || k === " ") this.tryPlay(this.selectedLevel);
-        else if (k === "Escape") this.showHome();
+        else if (k === "Escape") this.showModes();
         break;
       case "pause":
         if (k === "p" || k === "P" || k === "Escape") this.resume();
@@ -1034,8 +1281,10 @@ class UIManager {
         } else if (k === "Escape") this.showHome();
         break;
       case "gameover":
-        if (k === "Enter" || k === " ") this.startLevel(gameState.levelIndex);
-        else if (k === "Escape") this.showHome();
+        if (k === "Enter" || k === " ") {
+          if (gameState.isMarathon) this.startMarathon();
+          else this.startLevel(gameState.levelIndex);
+        } else if (k === "Escape") this.showHome();
         break;
     }
   }

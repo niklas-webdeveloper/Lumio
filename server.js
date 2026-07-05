@@ -34,7 +34,42 @@ const DEFAULT_SAVE = {
   levelStars: [],
   bestTimes: [],
   bestCoins: [],
+  bestMarathon: null, // { time, coins, deaths } — fastest full-run clear
 };
+
+// Collect one player's save into the leaderboard accumulator (per-level times
+// under numeric keys, marathon runs under "marathon").
+function accumulateLeaderboard(leaderboard, username, data) {
+  const bestTimes = data?.bestTimes || [];
+  const levelStars = data?.levelStars || [];
+
+  for (let i = 0; i < 4; i++) {
+    const time = bestTimes[i] || 0;
+    const stars = levelStars[i] || 0;
+
+    if (time > 0) {
+      leaderboard[i].push({ username, time, stars });
+    }
+  }
+
+  const marathon = data?.bestMarathon;
+  if (marathon && marathon.time > 0) {
+    leaderboard.marathon.push({
+      username,
+      time: marathon.time,
+      coins: marathon.coins || 0,
+      deaths: marathon.deaths || 0,
+    });
+  }
+}
+
+// Sort every board by time (ascending) and keep the top 3.
+function finalizeLeaderboard(leaderboard) {
+  for (const key of [0, 1, 2, 3, "marathon"]) {
+    leaderboard[key].sort((a, b) => a.time - b.time);
+    leaderboard[key] = leaderboard[key].slice(0, 3);
+  }
+}
 
 // MongoDB setup
 let db = null;
@@ -137,7 +172,8 @@ app.get("/api/leaderboard", async (req, res) => {
     0: [],
     1: [],
     2: [],
-    3: []
+    3: [],
+    marathon: []
   };
 
   // Use MongoDB if available
@@ -145,30 +181,10 @@ app.get("/api/leaderboard", async (req, res) => {
     try {
       const docs = await db.collection("saves").find().toArray();
       docs.forEach((doc) => {
-        const username = doc.username;
-        const bestTimes = doc.data?.bestTimes || [];
-        const levelStars = doc.data?.levelStars || [];
-
-        for (let i = 0; i < 4; i++) {
-          const time = bestTimes[i] || 0;
-          const stars = levelStars[i] || 0;
-
-          if (time > 0) {
-            leaderboard[i].push({
-              username: username,
-              time: time,
-              stars: stars
-            });
-          }
-        }
+        accumulateLeaderboard(leaderboard, doc.username, doc.data);
       });
 
-      // Sort each level's leaderboard by time (ascending) and take top 3
-      for (let i = 0; i < 4; i++) {
-        leaderboard[i].sort((a, b) => a.time - b.time);
-        leaderboard[i] = leaderboard[i].slice(0, 3);
-      }
-
+      finalizeLeaderboard(leaderboard);
       return res.json(leaderboard);
     } catch (error) {
       console.error("MongoDB error fetching leaderboard:", error);
@@ -179,43 +195,23 @@ app.get("/api/leaderboard", async (req, res) => {
   // Fallback to local files
   try {
     const files = fs.readdirSync(SAVES_DIR);
-    
+
     files.forEach(file => {
       if (!file.endsWith(".json")) return;
-      
+
       const username = path.basename(file, ".json");
       const filePath = path.join(SAVES_DIR, file);
-      
+
       try {
         const content = fs.readFileSync(filePath, "utf-8");
         const data = JSON.parse(content);
-        
-        const bestTimes = data.bestTimes || [];
-        const levelStars = data.levelStars || [];
-        
-        for (let i = 0; i < 4; i++) {
-          const time = bestTimes[i] || 0;
-          const stars = levelStars[i] || 0;
-          
-          if (time > 0) {
-            leaderboard[i].push({
-              username: username,
-              time: time,
-              stars: stars
-            });
-          }
-        }
+        accumulateLeaderboard(leaderboard, username, data);
       } catch (e) {
         console.error(`Failed to process save file ${file} for leaderboard:`, e);
       }
     });
 
-    // Sort each level's leaderboard by time (ascending) and take top 3
-    for (let i = 0; i < 4; i++) {
-      leaderboard[i].sort((a, b) => a.time - b.time);
-      leaderboard[i] = leaderboard[i].slice(0, 3);
-    }
-
+    finalizeLeaderboard(leaderboard);
     return res.json(leaderboard);
   } catch (error) {
     console.error("Failed to read saves for leaderboard:", error);

@@ -444,6 +444,96 @@
   z-index: 2;
 }
 
+/* ---- Mode select ---- */
+.mode-grid {
+  display: flex;
+  gap: 3.5vmin;
+  flex-wrap: wrap;
+  justify-content: center;
+  max-width: 92vmin;
+}
+.mode-card {
+  pointer-events: auto;
+  cursor: pointer;
+  position: relative;
+  width: 34vmin;
+  min-height: 30vmin;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.2vmin;
+  padding: 2.4vmin 2vmin;
+  border-radius: 2.4vmin;
+  background: linear-gradient(180deg, var(--teal-top) 0%, var(--teal-bottom) 100%);
+  border: 0.7vmin solid var(--gold);
+  box-shadow:
+    inset 0 0.4vmin 0 rgba(255, 255, 255, 0.25),
+    inset 0 -1vmin 1.6vmin rgba(0, 20, 40, 0.3),
+    0 0.9vmin 1.6vmin rgba(0, 15, 30, 0.45);
+  transition: transform 0.12s ease, filter 0.16s ease, box-shadow 0.16s ease;
+}
+/* Marathon card: warm "danger run" tint so the two modes read differently. */
+.mode-card.marathon {
+  background: linear-gradient(180deg, #a2564a 0%, #6f3a54 100%);
+}
+.mode-card .mode-icon {
+  width: 7vmin;
+  height: 7vmin;
+}
+.mode-card .mode-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 0.4vmin 0.4vmin rgba(0, 0, 0, 0.35));
+}
+.mode-card .mode-name {
+  font-family: "Baloo 2", sans-serif;
+  font-weight: 800;
+  font-size: 3.4vmin;
+  line-height: 1;
+  color: #fff;
+  paint-order: stroke fill;
+  -webkit-text-stroke: 0.45vmin var(--ink);
+  text-shadow: 0 0.35vmin 0 var(--gold-deep);
+}
+.mode-card .mode-desc {
+  font-size: 1.9vmin;
+  font-weight: 700;
+  line-height: 1.35;
+  color: #eafcff;
+  text-shadow: 0 0.2vmin 0.2vmin rgba(0, 20, 30, 0.5);
+  text-align: center;
+}
+.mode-card .mode-stats {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.8vmin;
+  margin-top: 0.6vmin;
+  padding: 0.7vmin 1.6vmin;
+  border-radius: 10vmin;
+  background: rgba(0, 20, 30, 0.3);
+  font-size: 1.9vmin;
+  font-weight: 800;
+  color: var(--gold-soft);
+}
+.mode-card .mode-stats img {
+  width: 2.4vmin;
+  height: 2.4vmin;
+  object-fit: contain;
+}
+.mode-card:hover {
+  transform: translateY(-0.7vmin);
+  filter: brightness(1.06);
+}
+.mode-card.selected {
+  transform: translateY(-0.7vmin) scale(1.04);
+  box-shadow:
+    inset 0 0.4vmin 0 rgba(255, 255, 255, 0.3),
+    0 0 0 0.5vmin rgba(255, 255, 255, 0.5),
+    0 1.2vmin 2vmin rgba(0, 15, 30, 0.5);
+}
+
 /* ---- Level select ---- */
 .level-grid {
   display: flex;
@@ -999,7 +1089,7 @@
   width: 100%;
   margin-bottom: 2.5vmin;
   overflow-y: auto;
-  max-height: 48vmin;
+  max-height: 56vmin;
   padding-right: 0.5vmin;
 }
 
@@ -1084,6 +1174,83 @@
   font-size: 2vmin;
   font-style: italic;
   padding: 2vmin 0;
+}
+
+/* Marathon board spans the full width below the per-level boards. */
+.leaderboard-level.marathon {
+  grid-column: 1 / -1;
+  background: rgba(64, 24, 40, 0.5);
+  border-color: rgba(255, 190, 120, 0.3);
+}
+
+.leaderboard-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.7vmin;
+  font-weight: 800;
+  color: var(--gold-soft);
+  white-space: nowrap;
+}
+.leaderboard-meta img {
+  width: 2.2vmin;
+  height: 2.2vmin;
+  object-fit: contain;
+}
+.leaderboard-meta .sep {
+  color: rgba(255, 255, 255, 0.4);
+  padding: 0 0.3vmin;
+}
+
+/* Subtitle line under the marathon results title. */
+.mode-subtitle {
+  margin-top: -1vmin;
+  margin-bottom: 1vmin;
+}
+
+/* ---- Resume countdown (3-2-1-GO! over the frozen game frame) ---- */
+.countdown-overlay {
+  background: rgba(6, 24, 34, 0.35);
+  backdrop-filter: blur(0.2vmin);
+}
+.countdown-num {
+  font-family: "Baloo 2", sans-serif;
+  font-weight: 800;
+  font-size: 22vmin;
+  line-height: 1;
+  color: #fff;
+  paint-order: stroke fill;
+  -webkit-text-stroke: 1.4vmin var(--ink);
+  text-shadow:
+    0 1vmin 0 var(--gold-deep),
+    0 2.2vmin 3.5vmin rgba(0, 10, 20, 0.55);
+  will-change: transform, opacity;
+}
+.countdown-num.go {
+  color: var(--gold-soft);
+  font-size: 26vmin;
+}
+.countdown-num.tick {
+  animation: cdPop 0.8s cubic-bezier(0.2, 0.9, 0.3, 1) both;
+}
+@keyframes cdPop {
+  0% {
+    transform: scale(2.4) rotate(-6deg);
+    opacity: 0;
+    filter: blur(0.6vmin);
+  }
+  28% {
+    transform: scale(1) rotate(0deg);
+    opacity: 1;
+    filter: blur(0);
+  }
+  72% {
+    transform: scale(1.02);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(0.7);
+    opacity: 0;
+  }
 }
 
 

@@ -4,6 +4,16 @@
  * (e.g. private mode). Kept tiny and serializable for easy extension.
  */
 
+/** Result of a completed marathon run (all levels back to back). */
+export interface MarathonRecord {
+  /** Total run time in seconds (including failed attempts). */
+  time: number;
+  /** Coins collected across the whole run. */
+  coins: number;
+  /** Lives lost during the run. */
+  deaths: number;
+}
+
 export interface SaveData {
   /** Highest level index the player may continue from (0-based). */
   unlockedLevel: number;
@@ -15,6 +25,8 @@ export interface SaveData {
   bestTimes: number[];
   /** Most coins collected in a single clear per level index. */
   bestCoins: number[];
+  /** Fastest completed marathon run; null until the first clear. */
+  bestMarathon: MarathonRecord | null;
 }
 
 const DEFAULT_SAVE: SaveData = {
@@ -24,6 +36,7 @@ const DEFAULT_SAVE: SaveData = {
   levelStars: [],
   bestTimes: [],
   bestCoins: [],
+  bestMarathon: null,
 };
 
 class SaveState {
@@ -71,6 +84,8 @@ class SaveState {
     this.cache.levelStars = (this.cache.levelStars ?? []).map((v) => v ?? 0);
     this.cache.bestTimes = (this.cache.bestTimes ?? []).map((v) => v ?? 0);
     this.cache.bestCoins = (this.cache.bestCoins ?? []).map((v) => v ?? 0);
+    // Older saves predate the marathon mode — normalize the missing field.
+    this.cache.bestMarathon = this.cache.bestMarathon ?? null;
   }
 
   private persist(): void {
@@ -172,6 +187,25 @@ class SaveState {
       data.bestCoins[index] = coins;
       this.persist();
     }
+  }
+
+  /** Fastest completed marathon run, or null if never finished one. */
+  getBestMarathon(): MarathonRecord | null {
+    return this.load().bestMarathon;
+  }
+
+  /**
+   * Record a completed marathon run, keeping the fastest. Returns true when
+   * this run set a new best (including the very first clear).
+   */
+  recordMarathon(time: number, coins: number, deaths: number): boolean {
+    const data = this.load();
+    if (!data.bestMarathon || time < data.bestMarathon.time) {
+      data.bestMarathon = { time, coins, deaths };
+      this.persist();
+      return true;
+    }
+    return false;
   }
 
   isMuted(): boolean {
