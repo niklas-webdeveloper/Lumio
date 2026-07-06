@@ -11,7 +11,8 @@ export type SfxName =
   | "death"
   | "complete"
   | "brick"
-  | "extralife";
+  | "extralife"
+  | "button";
 
 type Wave = OscillatorType;
 
@@ -26,11 +27,17 @@ type Wave = OscillatorType;
 /** Master gain when SFX are at full volume and unmuted (leaves headroom). */
 const SFX_BASE_GAIN = 0.6;
 
+/** Master gain for the synthesized menu music (kept soft and unobtrusive). */
+const MUSIC_BASE_GAIN = 0.85;
+
 class AudioManager {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
+  /** Separate bus for the menu music so it follows the *music* volume slider. */
+  private musicBus: GainNode | null = null;
   private muted = false;
   private sfxVolume = 1;
+  private musicVolume = 1;
   private musicTimer: ReturnType<typeof setInterval> | null = null;
   private musicStep = 0;
   private initialized = false;
@@ -46,10 +53,14 @@ class AudioManager {
         if (!Ctor) return;
         this.ctx = new Ctor();
         this.master = this.ctx.createGain();
+        this.musicBus = this.ctx.createGain();
         this.muted = saveState.isMuted();
         this.sfxVolume = saveState.getSfxVolume();
+        this.musicVolume = saveState.getMusicVolume();
         this.master.gain.value = this.currentGain();
+        this.musicBus.gain.value = this.currentMusicGain();
         this.master.connect(this.ctx.destination);
+        this.musicBus.connect(this.ctx.destination);
         this.initialized = true;
       } catch {
         return; // audio unavailable — game continues silently
@@ -67,10 +78,21 @@ class AudioManager {
     return this.muted ? 0 : SFX_BASE_GAIN * this.sfxVolume;
   }
 
+  /** Effective menu-music gain, honouring the mute flag and the music volume. */
+  private currentMusicGain(): number {
+    return this.muted ? 0 : MUSIC_BASE_GAIN * this.musicVolume;
+  }
+
+  /** Push the current mute/volume state into both live gain nodes. */
+  private applyGains(): void {
+    if (this.master) this.master.gain.value = this.currentGain();
+    if (this.musicBus) this.musicBus.gain.value = this.currentMusicGain();
+  }
+
   /** Toggle mute, persist it, and return the new state. */
   toggleMute(): boolean {
     this.muted = !this.muted;
-    if (this.master) this.master.gain.value = this.currentGain();
+    this.applyGains();
     saveState.setMuted(this.muted);
     return this.muted;
   }
@@ -83,7 +105,14 @@ class AudioManager {
   syncFromSave(): void {
     this.muted = saveState.isMuted();
     this.sfxVolume = saveState.getSfxVolume();
-    if (this.master) this.master.gain.value = this.currentGain();
+    this.musicVolume = saveState.getMusicVolume();
+    this.applyGains();
+  }
+
+  /** Re-read the persisted music volume (the settings slider just changed it). */
+  syncMusicVolume(): void {
+    this.musicVolume = saveState.getMusicVolume();
+    this.applyGains();
   }
 
   /** Current sound-effects volume, 0..1. */
@@ -94,7 +123,7 @@ class AudioManager {
   /** Set (and persist) the sound-effects volume, applying it live. */
   setSfxVolume(volume: number): void {
     this.sfxVolume = Math.max(0, Math.min(1, volume));
-    if (this.master) this.master.gain.value = this.currentGain();
+    this.applyGains();
     saveState.setSfxVolume(this.sfxVolume);
   }
 
@@ -107,9 +136,12 @@ class AudioManager {
     dur: number,
     type: Wave,
     gain: number,
-    when: number
+    when: number,
+    opts: { dest?: GainNode | null; attack?: number } = {}
   ): void {
-    if (!this.ctx || !this.master) return;
+    const dest = opts.dest ?? this.master;
+    if (!this.ctx || !dest) return;
+    const attack = opts.attack ?? 0.012;
     const osc = this.ctx.createOscillator();
     const env = this.ctx.createGain();
     osc.type = type;
@@ -118,10 +150,10 @@ class AudioManager {
       osc.frequency.exponentialRampToValueAtTime(Math.max(1, freqEnd), when + dur);
     }
     env.gain.setValueAtTime(0.0001, when);
-    env.gain.exponentialRampToValueAtTime(gain, when + 0.012);
+    env.gain.exponentialRampToValueAtTime(gain, when + attack);
     env.gain.exponentialRampToValueAtTime(0.0001, when + dur);
     osc.connect(env);
-    env.connect(this.master);
+    env.connect(dest);
     osc.start(when);
     osc.stop(when + dur + 0.02);
   }
@@ -186,35 +218,65 @@ class AudioManager {
           0.2
         );
         break;
+      case "button":
+        // Plain, soft UI click for menu buttons — short and unobtrusive.
+        this.tone(520, 400, 0.07, "sine", 0.22, t);
+        break;
     }
   }
 
-  // ----- Background music -----
+  // ----- Menu music -----
 
-  /** A short, loopable melody + bass line (frequencies in Hz; 0 = rest). */
-  private static readonly MELODY = [
-    523, 0, 659, 523, 784, 0, 659, 0, 587, 0, 440, 523, 392, 0, 659, 0,
+  /**
+   * A calm, loopable progression (Cmaj7 → Am7 → Fmaj7 → G) for the menus:
+   * one soft bass note per chord plus a slow sine arpeggio. Routed through the
+   * music bus, so it follows the "Musik" volume slider, not the SFX one.
+   */
+  private static readonly MENU_CHORDS: Array<{ bass: number; notes: number[] }> = [
+    { bass: 130.81, notes: [261.63, 329.63, 392.0, 493.88] }, // Cmaj7
+    { bass: 110.0, notes: [220.0, 261.63, 329.63, 392.0] }, // Am7
+    { bass: 87.31, notes: [174.61, 220.0, 261.63, 329.63] }, // Fmaj7
+    { bass: 98.0, notes: [196.0, 246.94, 293.66, 392.0] }, // G
   ];
-  private static readonly BASS = [131, 196, 165, 196];
+  /** Arpeggio pattern over the chord tones per 8-step bar (-1 = rest). */
+  private static readonly MENU_ARP = [0, 1, 2, 3, 2, 3, 1, -1];
+  /** Steps per bar (one chord) and pacing — slow enough to feel relaxed. */
+  private static readonly MENU_STEPS_PER_BAR = 8;
+  private static readonly MENU_STEP_MS = 320;
 
-  startMusic(): void {
-    if (!this.ctx || this.musicTimer !== null) return;
-    const stepMs = 200;
+  /** Start the relaxed menu loop (no-op if already running or audio is locked-out). */
+  startMenuMusic(): void {
+    if (this.musicTimer !== null) return;
     this.musicStep = 0;
     this.musicTimer = setInterval(() => {
-      if (!this.ctx) return;
+      // Until the first user gesture the context is suspended and its clock is
+      // frozen — skip scheduling so notes don't pile up at the same timestamp.
+      if (!this.ctx || this.ctx.state !== "running") return;
       const t = this.ctx.currentTime + 0.02;
-      const m = AudioManager.MELODY[this.musicStep % AudioManager.MELODY.length];
-      if (m > 0) this.tone(m, 0, 0.18, "square", 0.05, t);
-      if (this.musicStep % 4 === 0) {
-        const b = AudioManager.BASS[(this.musicStep / 4) % AudioManager.BASS.length];
-        this.tone(b, 0, 0.36, "triangle", 0.06, t);
+      const perBar = AudioManager.MENU_STEPS_PER_BAR;
+      const chords = AudioManager.MENU_CHORDS;
+      const chord =
+        chords[Math.floor(this.musicStep / perBar) % chords.length];
+      const pos = this.musicStep % perBar;
+      if (pos === 0) {
+        // Soft, long bass under the whole bar.
+        this.tone(chord.bass, 0, 2.4, "sine", 0.12, t, {
+          dest: this.musicBus,
+          attack: 0.09,
+        });
+      }
+      const arpIdx = AudioManager.MENU_ARP[pos];
+      if (arpIdx >= 0) {
+        this.tone(chord.notes[arpIdx], 0, 0.6, "sine", 0.1, t, {
+          dest: this.musicBus,
+          attack: 0.06,
+        });
       }
       this.musicStep++;
-    }, stepMs);
+    }, AudioManager.MENU_STEP_MS);
   }
 
-  stopMusic(): void {
+  stopMenuMusic(): void {
     if (this.musicTimer !== null) {
       clearInterval(this.musicTimer);
       this.musicTimer = null;

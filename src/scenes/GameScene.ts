@@ -124,11 +124,21 @@ export class GameScene extends Phaser.Scene {
     // Sets up the bounded, target-following gameplay camera (side-effect only).
     new CameraManager(this, this.player, this.level.widthPx, this.level.heightPx);
 
+    // The follow-lerp moves the camera in preRender, *after* the scene update.
+    // Repositioning the parallax only in update() therefore lagged one frame
+    // behind the camera, exposing a jittering strip of background color at the
+    // leading screen edge while running. FOLLOW_UPDATE fires right after the
+    // camera has settled on its final scroll for the frame — realign there.
+    this.cameras.main.on(Phaser.Cameras.Scene2D.Events.FOLLOW_UPDATE, () => {
+      this.parallax.update(this.cameras.main);
+    });
+
     gameState.startLevelTimer();
     this.exposeTestApi();
 
     this.sound.mute = audioManager.isMuted(); // global mute drives the bgm
-    this.bgm = this.sound.add(level.music, { loop: true, volume: 0.5 });
+    // 0.35 balances the loud mastered tracks against the soft synth menu loop.
+    this.bgm = this.sound.add(level.music, { loop: true, volume: 0.35 });
     this.bgm.play();
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () =>
       this.bgm.stop()

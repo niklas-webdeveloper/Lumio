@@ -45,31 +45,41 @@ export class ParallaxBackground {
     }
   }
 
+  /** Horizontal overdraw (px) so no background gap can ever peek in at the sides. */
+  private static readonly BLEED_X = 2;
+
   /** Reposition layers to the camera's view and drive the parallax scroll. */
   update(camera: Phaser.Cameras.Scene2D.Camera): void {
     // Guard against a torn-down camera during scene stop/restart transitions.
-    if (!camera || !camera.worldView) return;
-    // worldView is the actual visible world rect (accounts for zoom + centerOn).
-    const view = camera.worldView;
-    const resize = view.width !== this.lastViewW || view.height !== this.lastViewH;
+    if (!camera) return;
+    // Compute the visible world rect exactly from the raw scroll. (worldView
+    // rounds its x to whole pixels, which made the background jitter against
+    // the camera by up to half a design pixel every frame.)
+    const viewW = camera.displayWidth;
+    const viewH = camera.displayHeight;
+    const viewX = camera.scrollX + (camera.width - viewW) / 2;
+    const viewY = camera.scrollY + (camera.height - viewH) / 2;
+    const bleed = ParallaxBackground.BLEED_X;
+
+    const resize = viewW !== this.lastViewW || viewH !== this.lastViewH;
     if (resize) {
-      this.lastViewW = view.width;
-      this.lastViewH = view.height;
+      this.lastViewW = viewW;
+      this.lastViewH = viewH;
     }
 
     for (const { sprite, factor, texH } of this.layers) {
       // Uniform scale so the whole artwork height exactly fills the view.
-      const scale = view.height / texH;
+      const scale = viewH / texH;
 
-      sprite.setPosition(view.x, view.y);
+      sprite.setPosition(viewX - bleed, viewY);
       if (resize) {
-        sprite.setSize(view.width, view.height);
+        sprite.setSize(viewW + bleed * 2, viewH);
         sprite.setTileScale(scale);
         sprite.tilePositionY = 0;
       }
       // Displayed scroll = tilePosition × tileScale, so divide by scale to get a
-      // screen-space parallax offset of view.x × factor.
-      sprite.tilePositionX = (view.x * factor) / scale;
+      // screen-space parallax offset of viewX × factor.
+      sprite.tilePositionX = (viewX * factor) / scale;
     }
   }
 }

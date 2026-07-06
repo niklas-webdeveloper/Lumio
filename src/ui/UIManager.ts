@@ -186,6 +186,23 @@ class UIManager {
     this.root.id = "ui-root";
     document.body.appendChild(this.root);
 
+    // One delegated listener gives every menu button/card a plain click sound
+    // (runs on the SFX bus, so it follows the "Effekte" slider). Capture phase,
+    // so it also fires when a handler swaps the screen or stops propagation.
+    // The on-screen touch controls are gameplay input, not menu UI — no click.
+    this.root.addEventListener(
+      "click",
+      (e) => {
+        const target = e.target as HTMLElement | null;
+        if (!target || target.closest(".touch-btn, #touch-controls")) return;
+        if (target.closest("button, .mode-card, .level-card")) {
+          audioManager.unlock(); // a click is a user gesture — safe to unlock
+          audioManager.play("button");
+        }
+      },
+      true
+    );
+
     this.buildHome();
     this.buildModes();
     this.buildLevels();
@@ -199,6 +216,13 @@ class UIManager {
 
   private setContext(newCtx: KeyContext): void {
     this.ctx = newCtx;
+    // Relaxed synth loop under the menus; silent during gameplay, pause and
+    // the result screens (those either show the frozen game or its own bgm).
+    if (newCtx === "home" || newCtx === "modes" || newCtx === "levels") {
+      audioManager.startMenuMusic();
+    } else {
+      audioManager.stopMenuMusic();
+    }
     this.updateTouchControlsVisibility();
     this.updateLoopState();
   }
@@ -1372,9 +1396,10 @@ class UIManager {
     for (const im of this.muteImgs) im.src = src;
   }
 
-  /** Apply the persisted music volume to Phaser's global sound manager. */
+  /** Apply the persisted music volume to Phaser's sound manager + menu music. */
   private applyMusicVolume(): void {
     if (this.game) this.game.sound.volume = saveState.getMusicVolume();
+    audioManager.syncMusicVolume();
   }
 
   /**
