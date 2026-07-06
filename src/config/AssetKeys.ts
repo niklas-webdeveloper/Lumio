@@ -19,6 +19,9 @@ export type SceneKey = (typeof SceneKeys)[keyof typeof SceneKeys];
  */
 export const TextureKeys = {
   Tiles: "tex_tiles", // terrain tileset (grid of 32px tiles)
+  // Per-theme terrain reskins (same 10-GID layout as Tiles) — see themedArt.ts.
+  TilesShadow: "tex_tiles_shadow", // Solo Leveling: arcane rune stone (level 5)
+  TilesCrimson: "tex_tiles_crimson", // JJK/Sukuna: charred lava rock (level 6)
   Sky: "tex_sky", // parallax: static gradient sky + sun glow
   Rays: "tex_rays", // parallax: soft god-ray light beams (additive)
   MenuBg: "tex_menubg", // sleek modern gradient backdrop for menus
@@ -44,7 +47,13 @@ export const TextureKeys = {
   Snapvine: "tex_snapvine", // piranha-style plant, mouth closed (idle)
   SnapvineMid: "tex_snapvine_mid", // piranha-style plant, mouth half-open (bite anim)
   SnapvineOpen: "tex_snapvine_open", // piranha-style plant, mouth wide open (bite anim peak)
+  // Themed enemies (loaded sprite strips) — see themedArt.ts.
+  ShadowSoldier: "tex_shadow_soldier", // level 5: marching Shadow-Monarch knight
+  LavaGolem: "tex_lava_golem", // level 6: molten rock golem (ground)
+  Phoenix: "tex_phoenix", // level 6: fiery phoenix (flyer, 18-frame flight)
   Pipe: "tex_pipe", // pipe obstacle / plant housing
+  PipeShadow: "tex_pipe_shadow", // level 5: arcane stone conduit (themed pipe)
+  PipeCrimson: "tex_pipe_crimson", // level 6: obsidian vent (themed pipe)
   // Particle bits
   Spark: "tex_spark", // coin/sparkle particle
   Crumb: "tex_crumb", // brick-fragment particle
@@ -54,6 +63,8 @@ export const TextureKeys = {
 /** Animation keys for procedurally generated (frame-swapped) enemy art. */
 export const EnemyAnim = {
   snapvineBite: "snapvine-bite",
+  shadowSoldierMarch: "shadow-soldier-march",
+  phoenixFly: "phoenix-fly",
 } as const;
 
 // Player character art now comes from loaded sprite sheets — see

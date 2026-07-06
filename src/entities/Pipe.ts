@@ -8,8 +8,13 @@ import { TextureKeys } from "@/config/AssetKeys";
 export class Pipe extends Phaser.Physics.Arcade.Sprite {
   public declare body: Phaser.Physics.Arcade.StaticBody;
 
-  constructor(scene: Phaser.Scene, x: number, groundY: number) {
-    super(scene, x, groundY, TextureKeys.Pipe);
+  constructor(
+    scene: Phaser.Scene,
+    x: number,
+    groundY: number,
+    textureKey: string = TextureKeys.Pipe
+  ) {
+    super(scene, x, groundY, textureKey);
     scene.add.existing(this);
     scene.physics.add.existing(this, true);
     this.setOrigin(0.5, 1);

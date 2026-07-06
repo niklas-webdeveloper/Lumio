@@ -4,6 +4,7 @@ import { applyDesignViewport } from "@/config/GameConfig";
 import { createWorldTextures } from "@/systems/TextureFactory";
 import { loadHeroAssets, registerHeroAnimations } from "@/config/characterAssets";
 import { loadWorldArt, setupWorldArt } from "@/config/worldArt";
+import { loadThemedArt, setupThemedArt } from "@/config/themedArt";
 import { loadBackgrounds } from "@/config/backgrounds";
 import { ui } from "@/ui/UIManager";
 
@@ -35,6 +36,7 @@ export class PreloadScene extends Phaser.Scene {
     this.load.audio("bgm-6", "assets/audio/music/track6.m4a");
     loadHeroAssets(this); // character sprite sheets + portrait
     loadWorldArt(this); // tileset, blocks, item/enemy strips (SunnyLand art)
+    loadThemedArt(this); // per-theme tilesets/enemies/decor (levels 5 & 6)
     loadBackgrounds(this); // per-level parallax background layers
   }
 
@@ -42,6 +44,7 @@ export class PreloadScene extends Phaser.Scene {
     // Loaded pixel art first (filters + animations), then the procedural
     // generators — which skip every key the loaded art already fills.
     setupWorldArt(this);
+    setupThemedArt(this); // themed tileset filters + shadow-soldier march anim
     createWorldTextures(this);
     registerHeroAnimations(this);
     ui.setLoadProgress(1);

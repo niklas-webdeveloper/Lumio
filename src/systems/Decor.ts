@@ -1,13 +1,15 @@
 import type Phaser from "phaser";
-import { DecorArt } from "@/config/worldArt";
+import { decorSetFor, type DecorProp } from "@/config/themedArt";
+import type { BgTheme } from "@/config/backgrounds";
 import { TileGid } from "@/config/Tiles";
 
 /**
- * Scatters small non-colliding props (grass tufts, shrooms, rocks, the odd
- * bush) on top of exposed grass tiles. Purely visual: everything is placed
- * behind blocks/entities and has no physics. Placement is a deterministic
- * hash of the tile position, so a level always decorates identically —
- * across restarts and for every player.
+ * Scatters small non-colliding props on top of exposed ground tiles. The prop
+ * set is chosen by theme — grass tufts/shrooms/rocks on the classic stages,
+ * glowing arcane crystals on the Shadow stage, charred magma boulders on the
+ * Crimson stage. Purely visual: everything is placed behind blocks/entities and
+ * has no physics. Placement is a deterministic hash of the tile position, so a
+ * level always decorates identically — across restarts and for every player.
  */
 
 /** Roughly one prop per this many eligible grass tiles. */
@@ -22,21 +24,24 @@ function hashTile(x: number, y: number): number {
 }
 
 /** Pick a decor entry from the weighted table using a hash value. */
-function pickDecor(h: number): (typeof DecorArt)[number] {
-  const total = DecorArt.reduce((sum, d) => sum + d.weight, 0);
+function pickDecor(set: readonly DecorProp[], h: number): DecorProp {
+  const total = set.reduce((sum, d) => sum + d.weight, 0);
   let roll = h % total;
-  for (const d of DecorArt) {
+  for (const d of set) {
     if ((roll -= d.weight) < 0) return d;
   }
-  return DecorArt[0];
+  return set[0];
 }
 
 /** Decorate all exposed grass-top tiles of the terrain layer. */
 export function decorateTerrain(
   scene: Phaser.Scene,
   terrain: Phaser.Tilemaps.TilemapLayer,
-  depth: number
+  depth: number,
+  theme: BgTheme
 ): void {
+  const set = decorSetFor(theme);
+  if (set.length === 0) return; // themes may opt out of scatter props entirely
   const map = terrain.tilemap;
   for (let ty = 0; ty < map.height; ty++) {
     for (let tx = 0; tx < map.width; tx++) {
@@ -48,7 +53,7 @@ export function decorateTerrain(
       const h = hashTile(tx, ty);
       if (h % DENSITY !== 0) continue;
 
-      const d = pickDecor((h >>> 4) % 997);
+      const d = pickDecor(set, (h >>> 4) % 997);
       const jitter = ((h >>> 12) % 13) - 6; // +-6px, breaks the grid feel
       const img = scene.add.image(
         tile.getCenterX() + jitter,

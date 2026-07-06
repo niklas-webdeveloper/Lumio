@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import { TextureKeys } from "@/config/AssetKeys";
 import { SOLID_TILES, HAZARD_TILES } from "@/config/Tiles";
+import { terrainKeyFor } from "@/config/themedArt";
 import type { LevelDef } from "@/config/levels";
 
 /** A single entity-spawn entry parsed from the level's object layer. */
@@ -54,9 +55,13 @@ export class LevelLoader {
     }
 
     const map = scene.make.tilemap({ key: level.key });
+    // Levels 5 & 6 swap the shared terrain texture for a themed reskin (arcane
+    // rune stone / charred lava rock) — same GID layout, so nothing else changes.
+    const themed = terrainKeyFor(level.theme);
+    const tilesetKey = scene.textures.exists(themed) ? themed : TextureKeys.Tiles;
     const tileset = map.addTilesetImage(
       TILESET_NAME,
-      TextureKeys.Tiles,
+      tilesetKey,
       32,
       32,
       TILESET_MARGIN,

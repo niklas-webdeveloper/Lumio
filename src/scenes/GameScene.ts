@@ -10,6 +10,9 @@ import { ItemPickup } from "@/entities/powerups/ItemPickup";
 import { Fireball } from "@/entities/Fireball";
 import { Enemy } from "@/entities/enemies/Enemy";
 import { Plodder } from "@/entities/enemies/Plodder";
+import { ShadowSoldier } from "@/entities/enemies/ShadowSoldier";
+import { LavaGolem } from "@/entities/enemies/LavaGolem";
+import { Phoenix } from "@/entities/enemies/Phoenix";
 import { Snapvine } from "@/entities/enemies/Snapvine";
 import { Vulture } from "@/entities/enemies/Vulture";
 import { Bat } from "@/entities/enemies/Bat";
@@ -23,13 +26,21 @@ import {
   type BrickBreakPayload,
 } from "@/entities/blocks/Block";
 import { InputManager } from "@/systems/InputManager";
-import { RENDER_SCALE, CANVAS_WIDTH, CANVAS_HEIGHT } from "@/config/GameConfig";
+import {
+  RENDER_SCALE,
+  CANVAS_WIDTH,
+  CANVAS_HEIGHT,
+  GAME_WIDTH,
+  GAME_HEIGHT,
+} from "@/config/GameConfig";
 import { LevelLoader, type LoadedLevel } from "@/systems/LevelLoader";
 import { decorateTerrain } from "@/systems/Decor";
+import { pipeKeyFor, snapvineTintFor, brickTintFor } from "@/config/themedArt";
 import { ParallaxBackground } from "@/systems/ParallaxBackground";
 import { CameraManager } from "@/systems/CameraManager";
 import { ParticleManager } from "@/systems/ParticleManager";
 import { gameState, Progression } from "@/systems/GameState";
+import type { BgTheme } from "@/config/backgrounds";
 import { Physics } from "@/config/PhysicsConfig";
 import { saveState } from "@/systems/SaveState";
 import { audioManager } from "@/systems/AudioManager";
@@ -81,6 +92,10 @@ export class GameScene extends Phaser.Scene {
   private icicles!: Phaser.GameObjects.Group;
   private pipes!: Phaser.GameObjects.Group;
   private bgm!: Phaser.Sound.BaseSound;
+  /** Current level's theme — selects themed enemies for generic spawns. */
+  private theme!: BgTheme;
+  /** Drifting soul-fire / ember motes on the themed stages (follows the view). */
+  private ambientMotes?: Phaser.GameObjects.Particles.ParticleEmitter;
 
   private failed = false;
   private levelComplete = false;
@@ -104,14 +119,16 @@ export class GameScene extends Phaser.Scene {
 
     // --- Level geometry ---
     const level = getLevel(gameState.levelIndex)!;
+    this.theme = level.theme;
     this.level = new LevelLoader().load(this, level);
     this.level.terrain.setDepth(Depth.terrain);
-    decorateTerrain(this, this.level.terrain, Depth.decor);
+    decorateTerrain(this, this.level.terrain, Depth.decor, level.theme);
     this.physics.world.setBounds(0, 0, this.level.widthPx, this.level.heightPx);
     this.physics.world.setBoundsCollision(true, true, true, false); // open bottom
 
     this.parallax = new ParallaxBackground(this, level.theme);
     this.particles = new ParticleManager(this);
+    this.startAmbientMotes(level.theme);
     fadeIn(this);
 
     this.coins = this.add.group();
@@ -142,6 +159,11 @@ export class GameScene extends Phaser.Scene {
     // camera has settled on its final scroll for the frame — realign there.
     this.cameras.main.on(Phaser.Cameras.Scene2D.Events.FOLLOW_UPDATE, () => {
       this.parallax.update(this.cameras.main);
+      // Keep the ambient mote field parked over the visible view.
+      if (this.ambientMotes) {
+        const v = this.cameras.main.worldView;
+        this.ambientMotes.setPosition(v.x, v.y);
+      }
     });
 
     gameState.startLevelTimer();
@@ -201,6 +223,37 @@ export class GameScene extends Phaser.Scene {
     if (head?.index === TileGid.Quicksand) this.damagePlayer();
   }
 
+  /**
+   * Drifting glowing motes across the view on the two anime stages: cold
+   * soul-fire on the Shadow stage, rising embers on the Crimson stage. The
+   * emitter lives in world space and is re-parked over the camera view every
+   * frame (see the FOLLOW_UPDATE hook), so the field always fills the screen.
+   */
+  private startAmbientMotes(theme: BgTheme): void {
+    if (theme !== "shadow" && theme !== "crimson") return;
+    const shadow = theme === "shadow";
+    this.ambientMotes = this.add
+      .particles(0, 0, TextureKeys.Spark, {
+        lifespan: 4200,
+        speedX: { min: -8, max: 8 },
+        speedY: shadow ? { min: -20, max: -6 } : { min: -30, max: -12 },
+        scale: { min: 0.14, max: 0.5 },
+        alpha: { start: shadow ? 0.5 : 0.65, end: 0 },
+        tint: shadow
+          ? [0x6ad7ff, 0x9a7bff, 0xbfe6ff]
+          : [0xff7a2a, 0xff3a1e, 0xffc24e],
+        blendMode: Phaser.BlendModes.ADD,
+        frequency: shadow ? 190 : 150,
+        quantity: 1,
+        emitZone: {
+          type: "random" as const,
+          source: new Phaser.Geom.Rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT),
+          quantity: 1,
+        },
+      })
+      .setDepth(4);
+  }
+
   // ----- Spawning -----
 
   private spawnLevelObjects(): void {
@@ -226,26 +279,35 @@ export class GameScene extends Phaser.Scene {
         case "brick": {
           const brick = new BrickBlock(this, obj.x, obj.y);
           brick.setDepth(Depth.block);
+          const tint = brickTintFor(this.theme);
+          if (tint !== undefined) brick.setTint(tint);
           this.blocks.add(brick);
           break;
         }
         case "plodder": {
-          const plodder = new Plodder(this, obj.x, obj.y, this.level.terrain);
-          plodder.setDepth(Depth.enemy);
-          this.enemies.add(plodder);
-          this.plodders.add(plodder);
+          // The ground grunt is reskinned per theme: a Shadow-Monarch knight on
+          // level 5, a lava golem on level 6. Same patrol/stomp AI (WalkerEnemy).
+          const walker =
+            this.theme === "shadow"
+              ? new ShadowSoldier(this, obj.x, obj.y, this.level.terrain)
+              : this.theme === "crimson"
+                ? new LavaGolem(this, obj.x, obj.y, this.level.terrain)
+                : new Plodder(this, obj.x, obj.y, this.level.terrain);
+          walker.setDepth(Depth.enemy);
+          this.enemies.add(walker);
+          this.plodders.add(walker);
           break;
         }
         case "vulture": {
           const range = obj.properties.range;
-          const vulture = new Vulture(
-            this,
-            obj.x,
-            obj.y,
-            typeof range === "number" ? range : undefined
-          );
-          vulture.setDepth(Depth.enemy);
-          this.enemies.add(vulture);
+          const rangePx = typeof range === "number" ? range : undefined;
+          // The crimson stage soars fiery phoenixes instead of vultures.
+          const flyer =
+            this.theme === "crimson"
+              ? new Phoenix(this, obj.x, obj.y, rangePx)
+              : new Vulture(this, obj.x, obj.y, rangePx);
+          flyer.setDepth(Depth.enemy);
+          this.enemies.add(flyer);
           break;
         }
         case "bat": {
@@ -262,12 +324,16 @@ export class GameScene extends Phaser.Scene {
           break;
         }
         case "pipe": {
-          const pipe = new Pipe(this, obj.x, obj.y);
+          // The plant-housing pipe is reskinned per theme (arcane stone conduit
+          // / obsidian vent) and the emerging plant tinted to match.
+          const pipe = new Pipe(this, obj.x, obj.y, pipeKeyFor(this.theme));
           pipe.setDepth(Depth.pipe);
           this.pipes.add(pipe);
           if (obj.properties.plant === true) {
             const plant = new Snapvine(this, pipe.mouthX, pipe.mouthY);
             plant.setDepth(Depth.plant);
+            const tint = snapvineTintFor(this.theme);
+            if (tint !== undefined) plant.setTint(tint);
             this.enemies.add(plant);
           }
           break;
