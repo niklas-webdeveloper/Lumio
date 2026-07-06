@@ -2,7 +2,16 @@ import level01 from "@/levels/level-01.json";
 import level02 from "@/levels/level-02.json";
 import level03 from "@/levels/level-03.json";
 import level04 from "@/levels/level-04.json";
+import level05 from "@/levels/level-05.json";
+import level06 from "@/levels/level-06.json";
 import type { BgTheme } from "@/config/backgrounds";
+
+/**
+ * Rough level length class. "short" is the classic ~130-tile stage; "medium"
+ * is noticeably longer (~200 tiles) but not a slog. The level select groups
+ * levels by distance, and the marathon only runs the short stages.
+ */
+export type LevelDistance = "short" | "medium";
 
 /**
  * Level manifest — the ordered list of levels the game plays through.
@@ -27,19 +36,31 @@ export interface LevelDef {
    * pays the time bonus. Generous enough to also collect every coin en route.
    */
   parTime: number;
+  /** Length class (groups the level select; the marathon runs "short" only). */
+  distance: LevelDistance;
   /** Raw Tiled JSON map data. */
   data: unknown;
 }
 
 export const LEVELS: LevelDef[] = [
-  { key: "level-01", title: "Misty Peaks", theme: "mountain", music: "bgm-1", trackTitle: "Fighting", trackArtist: "Jujutsu Kaisen", parTime: 50, data: level01 },
-  { key: "level-02", title: "Scorching Dunes", theme: "desert", music: "bgm-2", trackTitle: "Opening 10", trackArtist: "Black Clover", parTime: 50, data: level02 },
-  { key: "level-03", title: "Gloomy Hollow", theme: "graveyard", music: "bgm-3", trackTitle: "Opening 2", trackArtist: "Attack on Titan", parTime: 50, data: level03 },
-  { key: "level-04", title: "Frozen Summit", theme: "snow", music: "bgm-4", trackTitle: "Hadouken", trackArtist: "Lupus Nocte", parTime: 50, data: level04 },
+  { key: "level-01", title: "Misty Peaks", theme: "mountain", music: "bgm-1", trackTitle: "Fighting", trackArtist: "Jujutsu Kaisen", parTime: 50, distance: "short", data: level01 },
+  { key: "level-02", title: "Scorching Dunes", theme: "desert", music: "bgm-2", trackTitle: "Opening 10", trackArtist: "Black Clover", parTime: 50, distance: "short", data: level02 },
+  { key: "level-03", title: "Gloomy Hollow", theme: "graveyard", music: "bgm-3", trackTitle: "Opening 2", trackArtist: "Attack on Titan", parTime: 50, distance: "short", data: level03 },
+  { key: "level-04", title: "Frozen Summit", theme: "snow", music: "bgm-4", trackTitle: "Hadouken", trackArtist: "Lupus Nocte", parTime: 50, distance: "short", data: level04 },
+  { key: "level-05", title: "Shadow Monarch", theme: "shadow", music: "bgm-5", trackTitle: "LEveL", trackArtist: "Solo Leveling", parTime: 85, distance: "medium", data: level05 },
+  { key: "level-06", title: "Crimson Shibuya", theme: "crimson", music: "bgm-6", trackTitle: "SPECIALZ", trackArtist: "Jujutsu Kaisen", parTime: 85, distance: "medium", data: level06 },
 ];
 
 /** Total number of levels. */
 export const LEVEL_COUNT = LEVELS.length;
+
+/**
+ * The marathon runs the short-distance stages back to back (they come first
+ * in the manifest, so indices 0..MARATHON_LEVEL_COUNT-1 are the run).
+ */
+export const MARATHON_LEVEL_COUNT = LEVELS.filter(
+  (l) => l.distance === "short"
+).length;
 
 /** Get a level definition by zero-based index (clamped/undefined-safe). */
 export function getLevel(index: number): LevelDef | undefined {

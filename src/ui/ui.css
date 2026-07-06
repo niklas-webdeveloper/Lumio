@@ -1579,3 +1579,115 @@
 }
 
 
+
+/* ---- Level select: distance groups ---- */
+.level-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 2.6vmin;
+  align-items: center;
+  max-width: 96vmin;
+}
+.level-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.4vmin;
+}
+.level-group-title {
+  font-family: "Baloo 2", sans-serif;
+  font-weight: 800;
+  font-size: 2.6vmin;
+  letter-spacing: 0.14em;
+  color: #ffe9b0;
+  paint-order: stroke fill;
+  -webkit-text-stroke: 0.45vmin var(--ink);
+  text-shadow: 0 0.35vmin 0 rgba(0, 20, 40, 0.35);
+  display: flex;
+  align-items: baseline;
+  gap: 1.6vmin;
+}
+.level-group-title .group-sub {
+  font-size: 1.8vmin;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: #cfeef7;
+  -webkit-text-stroke: 0;
+  text-shadow: 0 0.2vmin 0.2vmin rgba(0, 20, 30, 0.5);
+}
+/* Grouped layout shows up to six cards — slightly more compact than before. */
+.level-groups .level-card {
+  width: 17.5vmin;
+  height: 20.5vmin;
+  padding: 1.3vmin;
+}
+.level-groups .level-card .lvl-num {
+  font-size: 5.6vmin;
+}
+/* Medium-distance cards: a violet finish + a corner badge marking the longer run. */
+.level-card.medium {
+  background: linear-gradient(180deg, #5a4a9c 0%, #38295f 100%);
+  border-color: #b78aff;
+}
+.level-card.medium::after {
+  content: "MEDIUM";
+  position: absolute;
+  top: -2vmin;
+  right: -1.6vmin;
+  padding: 0.4vmin 1vmin;
+  border-radius: 1.2vmin;
+  background: linear-gradient(180deg, #b78aff 0%, #7e4fe0 100%);
+  border: 0.35vmin solid var(--ink);
+  font-family: "Baloo 2", sans-serif;
+  font-weight: 800;
+  font-size: 1.5vmin;
+  letter-spacing: 0.08em;
+  color: #fff;
+  text-shadow: 0 0.2vmin 0 rgba(0, 0, 40, 0.4);
+  box-shadow: 0 0.5vmin 1vmin rgba(0, 10, 30, 0.4);
+}
+.level-card.medium.locked::after {
+  filter: grayscale(0.6) brightness(0.8);
+}
+
+/* ---- Marathon world-title splash (between marathon levels) ---- */
+.marathon-splash {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.6vmin;
+  pointer-events: none;
+  z-index: 60;
+  background:
+    radial-gradient(ellipse at center, color-mix(in srgb, var(--ms-accent) 26%, transparent) 0%, transparent 62%),
+    linear-gradient(180deg, rgba(4, 8, 18, 0.9) 0%, rgba(4, 8, 18, 0.78) 100%);
+}
+.marathon-splash .ms-count {
+  font-family: "Baloo 2", sans-serif;
+  font-weight: 800;
+  font-size: 2.8vmin;
+  letter-spacing: 0.3em;
+  color: var(--ms-accent);
+  text-shadow: 0 0 2vmin color-mix(in srgb, var(--ms-accent) 70%, transparent);
+}
+.marathon-splash .ms-title {
+  font-family: "Baloo 2", sans-serif;
+  font-weight: 800;
+  font-size: 8vmin;
+  line-height: 1.1;
+  color: #fff;
+  paint-order: stroke fill;
+  -webkit-text-stroke: 0.7vmin var(--ink);
+  text-shadow:
+    0 0.6vmin 0 rgba(0, 10, 30, 0.55),
+    0 0 4vmin color-mix(in srgb, var(--ms-accent) 55%, transparent);
+}
+.marathon-splash .ms-bar {
+  width: 26vmin;
+  height: 0.7vmin;
+  border-radius: 1vmin;
+  background: linear-gradient(90deg, transparent, var(--ms-accent), transparent);
+}

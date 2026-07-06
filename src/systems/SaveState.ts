@@ -6,6 +6,7 @@
 
 import type { CharacterId } from "@/config/characterAssets";
 import { CHARACTERS } from "@/config/characterAssets";
+import { LEVEL_COUNT } from "@/config/levels";
 
 /** Result of a completed marathon run (all levels back to back). */
 export interface MarathonRecord {
@@ -119,8 +120,12 @@ class SaveState {
       this.cache = { ...DEFAULT_SAVE };
     }
 
-    // Always unlock all levels (level-01 through level-04)
-    this.cache.unlockedLevel = 3;
+    // Clamp the unlock ceiling into the valid range. Progression is earned:
+    // clearing a level unlocks the next one (older saves keep what they had).
+    this.cache.unlockedLevel = Math.max(
+      0,
+      Math.min(this.cache.unlockedLevel ?? 0, LEVEL_COUNT - 1)
+    );
     // JSON round-trips array holes/undefined as null — normalize to numbers.
     this.cache.levelStars = (this.cache.levelStars ?? []).map((v) => v ?? 0);
     this.cache.bestTimes = (this.cache.bestTimes ?? []).map((v) => v ?? 0);
@@ -144,7 +149,33 @@ class SaveState {
   /** Pending debounced backend sync (see persistSoon). */
   private syncTimer: ReturnType<typeof setTimeout> | null = null;
 
+  /** While > 0, persist() only marks dirty; batch() flushes once at the end. */
+  private batchDepth = 0;
+  private batchDirty = false;
+
+  /**
+   * Run several record/unlock calls as a single persist. A level completion
+   * records time, stars, coins, score and the unlock — without batching each
+   * of those would fire its own backend POST.
+   */
+  batch(fn: () => void): void {
+    this.batchDepth += 1;
+    try {
+      fn();
+    } finally {
+      this.batchDepth -= 1;
+      if (this.batchDepth === 0 && this.batchDirty) {
+        this.batchDirty = false;
+        this.persist();
+      }
+    }
+  }
+
   private persist(): void {
+    if (this.batchDepth > 0) {
+      this.batchDirty = true;
+      return;
+    }
     this.writeLocal();
     this.postRemote();
   }

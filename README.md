@@ -43,12 +43,14 @@ Requires Node 18+ (developed on Node 24).
 | Mute audio | M |
 | Menus | Space / Enter to confirm · Arrows to pick a level · Esc to go back · mouse/click works too |
 
-The game opens on a **home screen** (PLAY) → a **level select** with the four
-levels. Level 1 is open; clearing a level unlocks the next (saved locally).
+The game opens on a **home screen** (PLAY) → a **level select** with six
+levels grouped by distance: four **short** stages (also played back to back in
+the marathon) and two longer **medium** stages. Level 1 is open; clearing a
+level unlocks the next (saved locally + on the backend).
 
 ## How to play
 
-Run and jump through four stages, collecting coins (100 = an extra life),
+Run and jump through six stages, collecting coins (100 = an extra life),
 opening **?** Lucky Blocks for coins and the **Growcap** power-up (small → big,
 lets you smash bricks and survive one hit). Stomp **Plodders** from above; avoid
 **Snapvines** that lunge from pipes, plus spikes and bottomless pits. Reach the
@@ -73,9 +75,13 @@ level select — beat them for a **NEW BEST!**.
   sink, hop out — don't linger) patrolled by **vultures**; the graveyard hides
   **bats** that hang under platforms and chase you ghost-like once woken; the
   frozen summit is coated in **slippery ice** and drops **icicles** from the
-  platforms above.
+  platforms above. The two medium stages remix those enemies under their own
+  anime-styled skies: **Shadow Monarch** (a violet arcane night) and
+  **Crimson Shibuya** (a blood-red moon over a burning skyline).
 - **Game flow**: title menu, HUD (with a live stopwatch and a per-level coin
-  counter), pause, level-complete, game-over, 4 levels with progression.
+  counter), pause, level-complete, game-over, 6 levels with progression —
+  4 short + 2 medium-distance. The **marathon** runs the four short stages
+  back to back with a world-title splash between levels.
 - **Progression**: an earned 3-star rating per level (clear / all coins / beat
   the par time), per-level best times & best coin counts, and coins that fly
   into the HUD counter when collected — all saved in localStorage along with
@@ -111,10 +117,15 @@ src/
     ParticleManager     one-shot particle bursts
     AudioManager        synthesized SFX + music + mute
     GameState           run-state (lives/score/coins/level/timer)
-    SaveState           localStorage persistence
+    SaveState           localStorage + backend persistence
     transition.ts       camera fade helpers
-  levels/               level-01..04.json (Tiled-compatible)
-public/assets/          empty folders ready for your own art/audio/tilesets
+  ui/                   DOM/CSS interface: UIManager (shell + navigation),
+                        hud, touch, shop, leaderboard, settings, dom helpers
+  levels/               level-01..06.json (Tiled-compatible)
+scripts/
+  build-medium-levels.py       authors level-05/06 (deterministic layouts)
+  build-anime-backgrounds.py   generates the shadow/crimson parallax layers
+public/assets/          art, audio, tilesets, backgrounds
 ```
 
 ## Tuning the game feel
@@ -218,7 +229,8 @@ Phaser's sound manager. Mute (M) and the persisted setting still apply.
   pack by **Ansimuz** (https://ansimuz.itch.io), composed into game-ready
   sheets by `scripts/build-world-art.py`. Remaining world art (pipe, beacon,
   particles) is generated procedurally in code, as are the SFX.
-- **Music** — `public/assets/audio/music/Track1-4.mp3` (project-supplied).
+- **Music** — `public/assets/audio/music/track1-6.m4a` (project-supplied,
+  AAC re-encodes of the masters in `/audio-originals`).
 
 ## License
 

@@ -1,7 +1,7 @@
 import Phaser from "phaser";
 import { SceneKeys, TextureKeys } from "@/config/AssetKeys";
 import { TileGid } from "@/config/Tiles";
-import { getLevel, LEVEL_COUNT } from "@/config/levels";
+import { getLevel, LEVEL_COUNT, MARATHON_LEVEL_COUNT } from "@/config/levels";
 import { Player } from "@/entities/Player";
 import { Coin } from "@/entities/Coin";
 import { Pipe } from "@/entities/Pipe";
@@ -172,7 +172,8 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
-    if (this.cameras?.main) this.parallax.update(this.cameras.main);
+    // The parallax realigns on FOLLOW_UPDATE (after the camera settles) — no
+    // second update() call here, that would just do the same work twice.
     ui.updateHud();
   }
 
@@ -585,7 +586,11 @@ export class GameScene extends Phaser.Scene {
     const levelIndex = gameState.levelIndex;
     const level = getLevel(levelIndex)!;
     const timeSec = gameState.timeElapsed;
-    const lastLevel = levelIndex >= LEVEL_COUNT - 1;
+    // The marathon only runs the short-distance stages (0..3); the medium
+    // levels end a classic run at the true last manifest entry.
+    const lastLevel = gameState.isMarathon
+      ? levelIndex >= MARATHON_LEVEL_COUNT - 1
+      : levelIndex >= LEVEL_COUNT - 1;
 
     // Stars: 1 for the clear, +1 for every coin, +1 for beating the par time.
     const allCoins = gameState.allLevelCoins;
@@ -595,17 +600,31 @@ export class GameScene extends Phaser.Scene {
     const bonus = gameState.awardTimeBonus(level.parTime);
     // Per-level records also count in a marathon: the level timer resets on
     // every (re)start, so timeElapsed is a fair single-level clear time.
-    const newBestTime = saveState.recordBestTime(levelIndex, timeSec);
-    saveState.unlockLevel(Math.min(levelIndex + 1, LEVEL_COUNT - 1));
-    saveState.recordLevelStars(levelIndex, stars);
-    saveState.recordBestCoins(levelIndex, gameState.levelCoins);
-    saveState.recordScore(gameState.score);
+    // All records go out as ONE batched persist (a single backend POST).
+    let newBestTime = false;
+    let newBestRun = false;
+    saveState.batch(() => {
+      newBestTime = saveState.recordBestTime(levelIndex, timeSec);
+      saveState.unlockLevel(Math.min(levelIndex + 1, LEVEL_COUNT - 1));
+      saveState.recordLevelStars(levelIndex, stars);
+      saveState.recordBestCoins(levelIndex, gameState.levelCoins);
+      saveState.recordScore(gameState.score);
+      if (gameState.isMarathon && lastLevel) {
+        newBestRun = saveState.recordMarathon(
+          gameState.runTime,
+          gameState.runCoins,
+          gameState.deaths
+        );
+      }
+    });
 
-    // Marathon: no results screen between levels — flag sequence, then straight
-    // into the next level. Only the final level shows the run summary.
+    // Marathon: no results screen between levels — flag sequence, a world-title
+    // splash, then straight into the next level. Only the final level shows
+    // the run summary.
     if (gameState.isMarathon && !lastLevel) {
       this.playFlagSequence(() => {
         gameState.advanceLevel();
+        ui.showMarathonSplash(gameState.levelIndex);
         fadeOutThen(this, () => this.scene.restart());
       });
       return;
@@ -615,7 +634,6 @@ export class GameScene extends Phaser.Scene {
       const runTime = gameState.runTime;
       const runCoins = gameState.runCoins;
       const deaths = gameState.deaths;
-      const newBestRun = saveState.recordMarathon(runTime, runCoins, deaths);
       this.playFlagSequence(() => {
         fadeOutThen(this, () =>
           ui.showMarathonComplete({

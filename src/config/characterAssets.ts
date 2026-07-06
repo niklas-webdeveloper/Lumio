@@ -20,11 +20,21 @@ import foxLandUrl from "../../character-fox/land.png";
 import foxRunJumpUrl from "../../character-fox/runjump.png";
 import foxClimbUrl from "../../character-fox/climb.png";
 import foxPortraitUrl from "../../character-fox/portrait.png";
+// Jin-Woo pixel art by Soulfire (Solo Leveling fan sheet) — sheets generated
+// into `character-jinwoo/` by scripts/build-jinwoo-character.py (same 128px
+// cell layout, feet on y=120, facing right unflipped).
+import jinwooIdleUrl from "../../character-jinwoo/idle.png";
+import jinwooRunUrl from "../../character-jinwoo/run.png";
+import jinwooJumpUrl from "../../character-jinwoo/jump.png";
+import jinwooFallUrl from "../../character-jinwoo/fall.png";
+import jinwooLandUrl from "../../character-jinwoo/land.png";
+import jinwooRunJumpUrl from "../../character-jinwoo/runjump.png";
+import jinwooPortraitUrl from "../../character-jinwoo/portrait.png";
 
 /** All sheets use a uniform 128×128 frame; Phaser slices them row-major. */
 export const HERO_FRAME = 128;
 
-export type CharacterId = "lumio" | "fox";
+export type CharacterId = "lumio" | "fox" | "jinwoo";
 
 /** Sprite-sheet definition: load key, source URL, and frame count. */
 interface SheetDef {
@@ -90,6 +100,17 @@ const foxSheets: Record<AnimSlot, SheetDef> = {
   runjump: { key: "fox_runjump", url: foxRunJumpUrl, frames: 2 },
 };
 
+const jinwooRunSheet: SheetDef = { key: "jinwoo_run", url: jinwooRunUrl, frames: 8 };
+const jinwooSheets: Record<AnimSlot, SheetDef> = {
+  idle: { key: "jinwoo_idle", url: jinwooIdleUrl, frames: 5 },
+  run: jinwooRunSheet,
+  jump: { key: "jinwoo_jump", url: jinwooJumpUrl, frames: 2 },
+  fall: { key: "jinwoo_fall", url: jinwooFallUrl, frames: 2 },
+  land: { key: "jinwoo_land", url: jinwooLandUrl, frames: 2 },
+  dash: jinwooRunSheet, // no dedicated dash art — the run cycle at a higher rate
+  runjump: { key: "jinwoo_runjump", url: jinwooRunJumpUrl, frames: 4 },
+};
+
 export const CHARACTERS: Record<CharacterId, CharacterDef> = {
   lumio: {
     id: "lumio",
@@ -118,6 +139,20 @@ export const CHARACTERS: Record<CharacterId, CharacterDef> = {
     frameRates: { idle: 6, run: 14, jump: 10, fall: 10, land: 16, dash: 20, runjump: 8 },
     poleGrab: { key: "fox_climb", frame: 1 },
     poleHop: { key: "fox_jump", frame: 0 },
+  },
+  jinwoo: {
+    id: "jinwoo",
+    name: "Jin-Woo",
+    tagline: "Der Schattenmonarch — vom E-Rang zur Legende.",
+    price: 300,
+    pixelArt: true,
+    portrait: { key: "jinwoo_portrait", url: jinwooPortraitUrl },
+    sheets: jinwooSheets,
+    extraSheets: [],
+    anims: animKeys("jinwoo"),
+    frameRates: { idle: 6, run: 14, jump: 12, fall: 8, land: 14, dash: 20, runjump: 12 },
+    poleGrab: { key: jinwooSheets.idle.key, frame: 0 },
+    poleHop: { key: jinwooSheets.jump.key, frame: 0 },
   },
 };
 

@@ -1,9 +1,22 @@
 import type Phaser from "phaser";
 
 /** Available parallax background themes (one per level). */
-export type BgTheme = "mountain" | "desert" | "graveyard" | "snow";
+export type BgTheme =
+  | "mountain"
+  | "desert"
+  | "graveyard"
+  | "snow"
+  | "shadow"
+  | "crimson";
 
-export const BG_THEMES: BgTheme[] = ["mountain", "desert", "graveyard", "snow"];
+export const BG_THEMES: BgTheme[] = [
+  "mountain",
+  "desert",
+  "graveyard",
+  "snow",
+  "shadow",
+  "crimson",
+];
 
 /** Each theme has 5 depth layers (L0 = far sky … L4 = near foreground). */
 export const BG_LAYERS = 5;

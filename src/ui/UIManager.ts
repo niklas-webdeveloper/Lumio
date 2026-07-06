@@ -1,11 +1,33 @@
 import type Phaser from "phaser";
 import "./ui.css";
 import { SceneKeys } from "@/config/AssetKeys";
-import { CHARACTERS, CHARACTER_LIST, type CharacterId } from "@/config/characterAssets";
-import { LEVELS, getLevel, countLevelCoins } from "@/config/levels";
+import { CHARACTERS, CHARACTER_LIST } from "@/config/characterAssets";
+import {
+  LEVELS,
+  getLevel,
+  countLevelCoins,
+  MARATHON_LEVEL_COUNT,
+  type LevelDistance,
+} from "@/config/levels";
+import type { BgTheme } from "@/config/backgrounds";
 import { gameState } from "@/systems/GameState";
 import { saveState, type MarathonRecord } from "@/systems/SaveState";
 import { audioManager } from "@/systems/AudioManager";
+import {
+  UI,
+  el,
+  imgEl,
+  button,
+  starsRow,
+  icoTag,
+  fmtTime,
+  fmtTimePrecise,
+} from "./dom";
+import { Hud } from "./hud";
+import { TouchControls } from "./touch";
+import { openShop } from "./shop";
+import { openLeaderboard } from "./leaderboard";
+import { SettingsDialog } from "./settings";
 
 /** Data passed to the level-complete screen. */
 export interface CompleteData {
@@ -44,75 +66,8 @@ export interface MarathonCompleteData {
   best: MarathonRecord | null;
 }
 
-/** Format seconds as m:ss (for the HUD stopwatch and par times). */
-function fmtTime(seconds: number): string {
-  const total = Math.floor(seconds);
-  const m = Math.floor(total / 60);
-  const s = total % 60;
-  return `${m}:${String(s).padStart(2, "0")}`;
-}
-
-/** Format seconds as m:ss.t (tenths — for results and best times). */
-function fmtTimePrecise(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = seconds - m * 60;
-  const whole = Math.floor(s);
-  const tenths = Math.floor((s - whole) * 10);
-  return `${m}:${String(whole).padStart(2, "0")}.${tenths}`;
-}
-
 type KeyContext = "home" | "modes" | "levels" | "pause" | "complete" | "gameover" | "game";
 
-/** Base URL for the Hyper Casual UI kit assets (served from public/). */
-const UI = "/assets/ui";
-
-function el<K extends keyof HTMLElementTagNameMap>(
-  tag: K,
-  className = "",
-  html = ""
-): HTMLElementTagNameMap[K] {
-  const e = document.createElement(tag);
-  if (className) e.className = className;
-  if (html) e.innerHTML = html;
-  return e;
-}
-
-/** An <img> pointing at a kit asset (no alt/drag noise). */
-function imgEl(name: string, className = ""): HTMLImageElement {
-  const im = el("img", className);
-  im.src = `${UI}/${name}.png`;
-  im.alt = "";
-  im.draggable = false;
-  return im;
-}
-
-/** A glossy PNG pill button with a Baloo-2 label (and optional leading icon). */
-function button(
-  label: string,
-  variant: "green" | "blue" | "gold" | "orange" | "grey" = "green",
-  opts: { big?: boolean; icon?: string } = {}
-): HTMLButtonElement {
-  const b = el("button", `btn ${variant}${opts.big ? " big" : ""}`);
-  if (opts.icon) b.appendChild(imgEl(opts.icon));
-  b.appendChild(document.createTextNode(label));
-  return b;
-}
-
-/** A row of three star icons; the first `filled` are lit, the rest dimmed. */
-function starsRow(filled: number, big = false): string {
-  let s = `<span class="stars${big ? " big" : ""}">`;
-  for (let i = 0; i < 3; i++) {
-    s += `<img class="${i < filled ? "on" : "off"}" src="${UI}/star.png" alt="" draggable="false">`;
-  }
-  return s + "</span>";
-}
-
-/**
- * DOM/CSS user interface (Hyper Casual UI kit). Renders all menus, dialogs and
- * the HUD as crisp, resolution-independent HTML over the Phaser canvas, using the
- * kit's glossy PNG panels/buttons/icons, and bridges UI actions to the Phaser
- * game (start/pause/resume/stop the gameplay scene).
- */
 /**
  * Critical UI images decoded before the home screen is revealed, so menus,
  * buttons and the HUD paint complete on the first frame (no pop-in). CSS
@@ -137,28 +92,35 @@ const PRELOAD_IMAGES = [
   "timer",
 ];
 
-const STORAGE_KEY_TOUCH_ENABLED = "lumios_leap_touch_controls_enabled";
-
-const isMobileDevice = (): boolean => {
-  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
-    || (window.innerWidth <= 1024 && window.innerHeight <= 768);
+/** Accent color per theme for the marathon world-title splash. */
+const THEME_ACCENT: Record<BgTheme, string> = {
+  mountain: "#4f9be0",
+  desert: "#e0a53f",
+  graveyard: "#9a6ae0",
+  snow: "#5fd0e0",
+  shadow: "#8a5cff",
+  crimson: "#ff4a3a",
 };
 
+/**
+ * DOM/CSS user interface shell (Hyper Casual UI kit): screen navigation, the
+ * game-flow overlays (pause/complete/game over) and the keyboard bindings.
+ * The heavier pieces live in their own modules — Hud (hud.ts), TouchControls
+ * (touch.ts), the shop, the leaderboard and the settings dialog — and are
+ * composed here.
+ */
 class UIManager {
   private game!: Phaser.Game;
   private root!: HTMLDivElement;
   private screens: Record<string, HTMLElement> = {};
-  private hud!: HTMLElement;
-  private hudEls: Record<string, HTMLElement> = {};
+  private hud!: Hud;
+  private touch!: TouchControls;
+  private settings!: SettingsDialog;
   private muteImgs: HTMLImageElement[] = [];
   private ctx: KeyContext = "home";
   private selectedLevel = 0;
   private selectedMode = 0;
   private completeLast = false;
-
-  private touchControlsEnabled = false;
-  private touchToggleBtns: HTMLButtonElement[] = [];
-  private touchItemBtn: HTMLButtonElement | null = null;
 
   private splash: HTMLElement | null = null;
   private splashFill: HTMLElement | null = null;
@@ -171,22 +133,17 @@ class UIManager {
     this.splash = document.getElementById("boot-splash");
     this.splashFill = document.getElementById("bs-fill");
 
-    // Initialize touch state on window
-    window.touchInputState = {
-      left: false,
-      right: false,
-      jump: false,
-      down: false,
-      useItem: false,
-    };
-
-    // Load initial touch enabled status
-    const stored = localStorage.getItem(STORAGE_KEY_TOUCH_ENABLED);
-    this.touchControlsEnabled = stored !== null ? stored === "true" : isMobileDevice();
-
     this.root = el("div");
     this.root.id = "ui-root";
     document.body.appendChild(this.root);
+
+    this.touch = new TouchControls();
+    this.touch.onToggle = () => this.updateTouchControlsVisibility();
+    this.settings = new SettingsDialog({
+      root: this.root,
+      pauseGameplay: () => this.pauseGameplayForDialog(),
+      applyMusicVolume: () => this.applyMusicVolume(),
+    });
 
     // One delegated listener gives every menu button/card a plain click sound
     // (runs on the SFX bus, so it follows the "Effekte" slider). Capture phase,
@@ -208,8 +165,17 @@ class UIManager {
     this.buildHome();
     this.buildModes();
     this.buildLevels();
-    this.buildHud();
-    this.buildTouchControls();
+    this.hud = new Hud(this.root, {
+      onPause: () => this.requestPause(),
+      makeTools: () => [
+        this.touch.makeToggleButton(),
+        this.muteButton(),
+        this.settingsButton(),
+      ],
+      onItemIcon: (icon) => this.touch.setItemIcon(icon),
+    });
+    this.refreshMuteIcon();
+    this.touch.mount(this.root);
 
     this.applyMusicVolume();
     this.assetsReady = this.preloadImages();
@@ -230,10 +196,10 @@ class UIManager {
   }
 
   /**
-   * Phaser redraws the full 1920×1080 canvas every frame even when only a DOM
-   * menu is on screen. Outside active gameplay nothing on the canvas moves
-   * (menus cover it; on pause it shows a static frame), so put the game loop
-   * to sleep there and wake it for play. Saves a lot of GPU/battery/heat.
+   * Phaser redraws the full canvas every frame even when only a DOM menu is on
+   * screen. Outside active gameplay nothing on the canvas moves (menus cover
+   * it; on pause it shows a static frame), so put the game loop to sleep there
+   * and wake it for play. Saves a lot of GPU/battery/heat.
    * Note: contexts that (re)start a scene set ctx to "game" *before* calling
    * scene.start/resume, so the loop is always awake when scene ops run.
    */
@@ -248,133 +214,7 @@ class UIManager {
   }
 
   private updateTouchControlsVisibility(): void {
-    const overlay = document.getElementById("touch-controls");
-    if (!overlay) return;
-    if (this.touchControlsEnabled && this.ctx === "game") {
-      overlay.classList.remove("hidden");
-    } else {
-      overlay.classList.add("hidden");
-    }
-  }
-
-  private buildTouchControls(): void {
-    const container = el("div", "hidden");
-    container.id = "touch-controls";
-
-    const leftGroup = el("div", "touch-left-group");
-    const btnLeft = el("button", "touch-btn");
-    btnLeft.id = "btn-touch-left";
-    btnLeft.innerHTML = `
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-        <line x1="19" y1="12" x2="5" y2="12"></line>
-        <polyline points="12 19 5 12 12 5"></polyline>
-      </svg>
-    `;
-
-    const btnDown = el("button", "touch-btn big-jump");
-    btnDown.id = "btn-touch-down";
-    btnDown.innerHTML = `
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-        <line x1="12" y1="5" x2="12" y2="19"></line>
-        <polyline points="19 12 12 19 5 12"></polyline>
-      </svg>
-    `;
-
-    const btnRight = el("button", "touch-btn");
-    btnRight.id = "btn-touch-right";
-    btnRight.innerHTML = `
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-        <line x1="5" y1="12" x2="19" y2="12"></line>
-        <polyline points="12 5 19 12 12 19"></polyline>
-      </svg>
-    `;
-
-    leftGroup.append(btnLeft, btnRight);
-
-    const rightGroup = el("div", "touch-right-group");
-    const btnJump = el("button", "touch-btn big-jump");
-    btnJump.id = "btn-touch-jump";
-    btnJump.innerHTML = `
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-        <line x1="12" y1="19" x2="12" y2="5"></line>
-        <polyline points="5 12 12 5 19 12"></polyline>
-      </svg>
-    `;
-
-    // Mario-Kart-style item button: shows the stashed item, fires it on tap.
-    const btnItem = el("button", "touch-btn touch-item");
-    btnItem.id = "btn-touch-item";
-    btnItem.textContent = "◇";
-    this.touchItemBtn = btnItem;
-
-    rightGroup.append(btnItem, btnDown, btnJump);
-    container.append(leftGroup, rightGroup);
-
-    // Append to this.root (which is inside #ui-root) so the .hidden CSS styling is correctly applied
-    this.root.appendChild(container);
-
-    const bindEvents = (
-      btn: HTMLElement,
-      stateKey: "left" | "right" | "jump" | "down" | "useItem"
-    ) => {
-      const start = (e: Event) => {
-        e.preventDefault();
-        if (window.touchInputState) {
-          window.touchInputState[stateKey] = true;
-        }
-      };
-
-      const end = (e: Event) => {
-        e.preventDefault();
-        if (window.touchInputState) {
-          window.touchInputState[stateKey] = false;
-        }
-      };
-
-      btn.addEventListener("touchstart", start, { passive: false });
-      btn.addEventListener("touchend", end, { passive: false });
-      btn.addEventListener("touchcancel", end, { passive: false });
-
-      btn.addEventListener("mousedown", start);
-      const handleMouseUp = () => {
-        if (window.touchInputState) {
-          window.touchInputState[stateKey] = false;
-        }
-      };
-      btn.addEventListener("mouseup", handleMouseUp);
-      btn.addEventListener("mouseleave", handleMouseUp);
-    };
-
-    bindEvents(btnLeft, "left");
-    bindEvents(btnRight, "right");
-    bindEvents(btnDown, "down");
-    bindEvents(btnJump, "jump");
-    bindEvents(btnItem, "useItem");
-  }
-
-  private touchToggleButton(): HTMLButtonElement {
-    const b = el("button", `icon-btn small touch-toggle${this.touchControlsEnabled ? " active" : ""}`);
-    b.title = "Touch-Steuerung umschalten";
-    b.innerHTML = `
-      <svg viewBox="0 0 24 24" width="100%" height="100%" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display: block;">
-        <line x1="4" y1="12" x2="10" y2="12"></line>
-        <line x1="7" y1="9" x2="7" y2="15"></line>
-        <circle cx="17" cy="10" r="1.5" fill="currentColor"></circle>
-        <circle cx="20" cy="13" r="1.5" fill="currentColor"></circle>
-      </svg>
-    `;
-    b.onclick = () => this.toggleTouchControls();
-    this.touchToggleBtns.push(b);
-    return b;
-  }
-
-  private toggleTouchControls(): void {
-    this.touchControlsEnabled = !this.touchControlsEnabled;
-    localStorage.setItem(STORAGE_KEY_TOUCH_ENABLED, String(this.touchControlsEnabled));
-    for (const btn of this.touchToggleBtns) {
-      btn.classList.toggle("active", this.touchControlsEnabled);
-    }
-    this.updateTouchControlsVisibility();
+    this.touch.setVisible(this.ctx === "game");
   }
 
   // ---------- Boot splash ----------
@@ -428,7 +268,7 @@ class UIManager {
 
   private hideAll(): void {
     for (const s of Object.values(this.screens)) s.classList.add("hidden");
-    this.hud.classList.add("hidden");
+    this.hud.hide();
   }
 
   /** Show a menu screen with a fresh fade-in (restarts the animation each time). */
@@ -442,14 +282,6 @@ class UIManager {
   private stopGame(): void {
     if (this.game.scene.isActive(SceneKeys.Game)) this.game.scene.stop(SceneKeys.Game);
     if (this.game.scene.isPaused(SceneKeys.Game)) this.game.scene.stop(SceneKeys.Game);
-  }
-
-  /** A round PNG icon button (pause / mute) with hover + press feedback. */
-  private iconButton(iconName: string, onClick: () => void): HTMLButtonElement {
-    const b = el("button", "icon-btn small");
-    b.appendChild(imgEl(iconName));
-    b.onclick = onClick;
-    return b;
   }
 
   /** A mute toggle whose icon tracks the shared audio state. */
@@ -472,8 +304,27 @@ class UIManager {
         <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
       </svg>
     `;
-    b.onclick = () => this.showSettings();
+    b.onclick = () => this.settings.open();
     return b;
+  }
+
+  /** Freeze a live gameplay scene for a modal dialog; returns the un-freezer. */
+  private pauseGameplayForDialog(): (() => void) | null {
+    const gs = this.game.scene.getScene(SceneKeys.Game) as unknown as { canPause?: boolean };
+    if (
+      this.ctx === "game" &&
+      this.game.scene.isActive(SceneKeys.Game) &&
+      !this.game.scene.isPaused(SceneKeys.Game) &&
+      gs?.canPause !== false
+    ) {
+      this.game.scene.pause(SceneKeys.Game);
+      this.game.sound.pauseAll();
+      return () => {
+        this.game.scene.resume(SceneKeys.Game);
+        this.game.sound.resumeAll();
+      };
+    }
+    return null;
   }
 
   // ---------- Home ----------
@@ -482,7 +333,7 @@ class UIManager {
     const s = el("div", "ui-screen hidden");
 
     const tools = el("div", "corner-tools");
-    tools.appendChild(this.touchToggleButton());
+    tools.appendChild(this.touch.makeToggleButton());
     tools.appendChild(this.muteButton());
     tools.appendChild(this.settingsButton());
 
@@ -539,7 +390,7 @@ class UIManager {
     heroImg.classList.toggle("pixelated", char.pixelArt);
     const heroName = this.screens.home.querySelector("#home-hero-name") as HTMLElement;
     heroName.textContent = char.name;
-    
+
     const hiContainer = this.screens.home.querySelector("#home-hi") as HTMLElement;
     if (hiContainer) {
       hiContainer.style.cursor = "pointer";
@@ -632,190 +483,24 @@ class UIManager {
     this.hideAll();
     this.closeOverlays();
     this.setContext("home");
-
-    const o = this.overlay(true);
-    o.id = "leaderboard-overlay";
-
-    const p = el("div", "panel purple wide");
-    p.appendChild(el("div", "panel-title", "BESTENLISTE"));
-
-    const loading = el("div", "muted-text", "Lade Daten...");
-    loading.style.textAlign = "center";
-    loading.style.fontSize = "2.8vmin";
-    p.appendChild(loading);
-
-    const closeBtn = button("ZURÜCK", "blue", { icon: "home" });
-    closeBtn.onclick = () => {
-      this.closeOverlays();
-      this.showHome();
-    };
-
-    fetch("/api/leaderboard")
-      .then((r) => r.json())
-      .then((data) => {
-        loading.remove();
-
-        const container = el("div", "leaderboard-container");
-
-        for (let i = 0; i < LEVELS.length; i++) {
-          const levelDiv = el("div", "leaderboard-level");
-          levelDiv.appendChild(el("div", "leaderboard-level-title", `LEVEL ${i + 1}`));
-
-          const list = el("div", "leaderboard-list");
-          const levelData = data[i] || [];
-
-          if (levelData.length === 0) {
-            list.appendChild(el("div", "leaderboard-empty", "Keine Einträge"));
-          } else {
-            levelData.forEach((entry: any, index: number) => {
-              const row = el("div", "leaderboard-row");
-
-              const rank = el("span", "leaderboard-rank", `${index + 1}.`);
-              const name = el("span", "leaderboard-name", entry.username);
-              const time = el("span", "leaderboard-time", fmtTimePrecise(entry.time));
-
-              const stars = el("span", "leaderboard-stars");
-              stars.innerHTML = starsRow(entry.stars);
-
-              row.append(rank, name, time, stars);
-              list.appendChild(row);
-            });
-          }
-
-          levelDiv.appendChild(list);
-          container.appendChild(levelDiv);
-        }
-
-        // Marathon board: full-width section below the per-level boards.
-        const maraDiv = el("div", "leaderboard-level marathon");
-        maraDiv.appendChild(el("div", "leaderboard-level-title", "MARATHON"));
-        const maraList = el("div", "leaderboard-list");
-        const maraData = data.marathon || [];
-        if (maraData.length === 0) {
-          maraList.appendChild(el("div", "leaderboard-empty", "Noch kein Run geschafft"));
-        } else {
-          maraData.forEach((entry: any, index: number) => {
-            const row = el("div", "leaderboard-row");
-            const rank = el("span", "leaderboard-rank", `${index + 1}.`);
-            const name = el("span", "leaderboard-name", entry.username);
-            const time = el("span", "leaderboard-time", fmtTimePrecise(entry.time));
-            const meta = el("span", "leaderboard-meta");
-            meta.innerHTML =
-              `${this.icoTag("coin")} ${entry.coins ?? 0}` +
-              `<span class="sep">·</span>` +
-              `${this.icoTag("heart")} −${entry.deaths ?? 0}`;
-            row.append(rank, name, time, meta);
-            maraList.appendChild(row);
-          });
-        }
-        maraDiv.appendChild(maraList);
-        container.appendChild(maraDiv);
-
-        p.insertBefore(container, closeBtn);
-      })
-      .catch((err) => {
-        loading.textContent = "Fehler beim Laden!";
-        console.error("Leaderboard error:", err);
-      });
-
-    p.appendChild(closeBtn);
-    o.appendChild(p);
+    openLeaderboard({
+      overlay: (solid) => this.overlay(solid),
+      goHome: () => {
+        this.closeOverlays();
+        this.showHome();
+      },
+    });
   }
 
-  // ---------- Character shop ----------
-
-  /**
-   * The character shop: shows the account coin balance, one card per
-   * character, and lets the player buy locked characters or switch the
-   * active one. Selection persists in the save (local + backend).
-   */
   showShop(): void {
     this.stopGame();
     this.hideAll();
     this.closeOverlays();
     this.setContext("home");
-
-    const o = this.overlay(true);
-    o.id = "shop-overlay";
-
-    const p = el("div", "panel purple wide shop-panel");
-    p.appendChild(el("div", "panel-title", "SHOP"));
-
-    // Account balance: every coin collected in any run lands here.
-    const balance = el("div", "shop-balance");
-    balance.innerHTML =
-      `${this.icoTag("coin")}<span class="val">${saveState.getTotalCoins()}</span>` +
-      `<span class="lbl">Münzen auf deinem Konto</span>`;
-    p.appendChild(balance);
-
-    const grid = el("div", "shop-grid");
-    for (const char of CHARACTER_LIST) grid.appendChild(this.shopCard(char.id));
-    p.appendChild(grid);
-
-    const closeBtn = button("ZURÜCK", "blue", { icon: "home" });
-    closeBtn.onclick = () => this.showHome();
-    p.appendChild(closeBtn);
-    o.appendChild(p);
-  }
-
-  /** One character card in the shop (portrait, name, price / select state). */
-  private shopCard(id: CharacterId): HTMLElement {
-    const char = CHARACTERS[id];
-    const owned = saveState.isCharacterOwned(id);
-    const selected = saveState.getSelectedCharacter() === id;
-    const balance = saveState.getTotalCoins();
-
-    const card = el("div", `shop-card${selected ? " selected" : ""}${owned ? "" : " locked"}`);
-
-    const frame = el("div", "shop-portrait");
-    const img = el("img");
-    img.src = char.portrait.url;
-    img.draggable = false;
-    if (char.pixelArt) img.classList.add("pixelated");
-    frame.appendChild(img);
-    if (selected) frame.appendChild(el("div", "shop-active-badge", "AKTIV"));
-    card.appendChild(frame);
-
-    card.appendChild(el("div", "shop-name", char.name));
-    card.appendChild(el("div", "shop-tagline", char.tagline));
-
-    if (selected) {
-      const b = button("AUSGEWÄHLT", "grey");
-      b.disabled = true;
-      card.appendChild(b);
-    } else if (owned) {
-      const b = button("AUSWÄHLEN", "green");
-      b.onclick = () => {
-        saveState.setSelectedCharacter(id);
-        audioManager.play("coin");
-        this.showShop(); // re-render with the new selection
-      };
-      card.appendChild(b);
-    } else {
-      const price = el("div", "shop-price");
-      price.innerHTML = `${this.icoTag("coin")}<span>${char.price}</span>`;
-      card.appendChild(price);
-
-      const affordable = balance >= char.price;
-      const b = button("KAUFEN", affordable ? "gold" : "grey");
-      if (affordable) {
-        b.onclick = () => {
-          if (!saveState.buyCharacter(id, char.price)) return;
-          audioManager.play("extralife"); // little fanfare for the unlock
-          this.showShop(); // re-render: card flips to owned + selected
-        };
-      } else {
-        b.disabled = true;
-        card.appendChild(b);
-        const missing = char.price - balance;
-        card.appendChild(
-          el("div", "shop-hint", `Noch ${missing} Münzen sammeln!`)
-        );
-        return card;
-      }
-      card.appendChild(b);
-    }
-    return card;
+    openShop({
+      overlay: (solid) => this.overlay(solid),
+      goHome: () => this.showHome(),
+    });
   }
 
   // ---------- Mode select ----------
@@ -847,7 +532,7 @@ class UIManager {
   }): HTMLElement {
     const card = el("div", `mode-card${opts.marathon ? " marathon" : ""}`);
     card.innerHTML =
-      `<div class="mode-icon">${this.icoTag(opts.icon)}</div>` +
+      `<div class="mode-icon">${icoTag(opts.icon)}</div>` +
       `<div class="mode-name">${opts.name}</div>` +
       `<div class="mode-desc">${opts.desc}</div>` +
       `<div class="mode-stats">${opts.stats}</div>`;
@@ -863,7 +548,7 @@ class UIManager {
       icon: "timer",
       name: "ZEIT-MODUS",
       desc: "Wähle ein Level und jage die Bestzeit. Sterne für Coins und Speed.",
-      stats: `${this.icoTag("star")} ${LEVELS.reduce((n, _l, i) => n + saveState.getLevelStars(i), 0)}/${LEVELS.length * 3} Sterne`,
+      stats: `${icoTag("star")} ${LEVELS.reduce((n, _l, i) => n + saveState.getLevelStars(i), 0)}/${LEVELS.length * 3} Sterne`,
       onPick: () => this.showLevels(),
     });
 
@@ -871,10 +556,10 @@ class UIManager {
     const marathon = this.modeCard({
       icon: "crown",
       name: "MARATHON",
-      desc: `Alle ${LEVELS.length} Level am Stück, 3 Leben für den ganzen Run. Tod = Level neu, die Uhr läuft weiter!`,
+      desc: `Die ${MARATHON_LEVEL_COUNT} kurzen Level am Stück, 3 Leben für den ganzen Run. Tod = Level neu, die Uhr läuft weiter!`,
       stats: best
-        ? `${this.icoTag("timer")} Bestzeit ${fmtTimePrecise(best.time)}`
-        : `${this.icoTag("timer")} Noch kein Run geschafft`,
+        ? `${icoTag("timer")} Bestzeit ${fmtTimePrecise(best.time)}`
+        : `${icoTag("timer")} Noch kein Run geschafft`,
       onPick: () => this.startMarathon(),
       marathon: true,
     });
@@ -906,7 +591,7 @@ class UIManager {
     this.hideAll();
     this.closeOverlays();
     this.setContext("game");
-    this.hud.classList.remove("hidden");
+    this.hud.show();
     this.game.scene.start(SceneKeys.Game);
   }
 
@@ -915,9 +600,9 @@ class UIManager {
   private buildLevels(): void {
     const s = el("div", "ui-screen hidden");
     s.append(el("div", "title", "LEVELS"));
-    const grid = el("div", "level-grid");
-    grid.id = "level-grid";
-    s.appendChild(grid);
+    const groups = el("div", "level-groups");
+    groups.id = "level-groups";
+    s.appendChild(groups);
     const back = button("Back", "blue");
     back.onclick = () => this.showModes();
     s.appendChild(back);
@@ -926,27 +611,55 @@ class UIManager {
     this.screens.levels = s;
   }
 
+  /** One level card (shared by both distance groups). */
+  private levelCard(i: number, unlocked: number): HTMLElement {
+    const lvl = LEVELS[i];
+    const locked = i > unlocked;
+    const card = el(
+      "div",
+      `level-card${locked ? " locked" : ""}${lvl.distance === "medium" ? " medium" : ""}`
+    );
+    const best = saveState.getBestTime(i);
+    const meta =
+      `<div class="lvl-meta">` +
+      `<span>${icoTag("timer")}${best !== null ? fmtTimePrecise(best) : "-:--"}</span>` +
+      `<span>${icoTag("coin")}${saveState.getBestCoins(i)}/${countLevelCoins(lvl)}</span>` +
+      `</div>`;
+    card.innerHTML = locked
+      ? `<div class="lock-badge"><img src="${UI}/lock.png" alt="" draggable="false"></div><div class="lvl-name">${lvl.title}</div>`
+      : `<div class="lvl-num">${i + 1}</div>${starsRow(saveState.getLevelStars(i))}${meta}<div class="lvl-name">${lvl.title}</div>`;
+    card.onmouseenter = () => this.selectLevel(i);
+    card.onclick = () => this.tryPlay(i);
+    return card;
+  }
+
   showLevels(): void {
     const unlocked = saveState.getUnlockedLevel();
     this.selectedLevel = Math.min(unlocked, LEVELS.length - 1);
-    const grid = this.screens.levels.querySelector("#level-grid") as HTMLElement;
-    grid.innerHTML = "";
-    LEVELS.forEach((lvl, i) => {
-      const locked = i > unlocked;
-      const card = el("div", `level-card${locked ? " locked" : ""}`);
-      const best = saveState.getBestTime(i);
-      const meta =
-        `<div class="lvl-meta">` +
-        `<span>${this.icoTag("timer")}${best !== null ? fmtTimePrecise(best) : "-:--"}</span>` +
-        `<span>${this.icoTag("coin")}${saveState.getBestCoins(i)}/${countLevelCoins(lvl)}</span>` +
-        `</div>`;
-      card.innerHTML = locked
-        ? `<div class="lock-badge"><img src="${UI}/lock.png" alt="" draggable="false"></div><div class="lvl-name">${lvl.title}</div>`
-        : `<div class="lvl-num">${i + 1}</div>${starsRow(saveState.getLevelStars(i))}${meta}<div class="lvl-name">${lvl.title}</div>`;
-      card.onmouseenter = () => this.selectLevel(i);
-      card.onclick = () => this.tryPlay(i);
-      grid.appendChild(card);
-    });
+    const groups = this.screens.levels.querySelector("#level-groups") as HTMLElement;
+    groups.innerHTML = "";
+
+    // The level select is grouped by distance: the classic short stages first
+    // (they're also the marathon), then the longer medium stages. DOM order
+    // stays the manifest order, so ←/→ keyboard selection works across groups.
+    const groupDefs: Array<{ distance: LevelDistance; title: string; sub: string }> = [
+      { distance: "short", title: "KURZE DISTANZ", sub: "die klassischen Stages · auch im Marathon" },
+      { distance: "medium", title: "MITTLERE DISTANZ", sub: "längere Stages — mehr Strecke, mehr Coins" },
+    ];
+    for (const def of groupDefs) {
+      const indices = LEVELS.map((l, i) => ({ l, i })).filter(
+        ({ l }) => l.distance === def.distance
+      );
+      if (indices.length === 0) continue;
+      const group = el("div", `level-group ${def.distance}`);
+      const title = el("div", "level-group-title");
+      title.innerHTML = `${def.title}<span class="group-sub">${def.sub}</span>`;
+      const grid = el("div", "level-grid");
+      for (const { i } of indices) grid.appendChild(this.levelCard(i, unlocked));
+      group.append(title, grid);
+      groups.appendChild(group);
+    }
+
     this.hideAll();
     this.closeOverlays();
     this.revealScreen(this.screens.levels);
@@ -981,160 +694,32 @@ class UIManager {
     this.hideAll();
     this.closeOverlays();
     this.setContext("game");
-    this.hud.classList.remove("hidden");
+    this.hud.show();
     this.game.scene.start(SceneKeys.Game);
   }
 
   /** Called from GameScene.create (fresh start, respawn or retry). */
   onGameSceneCreate(): void {
     this.closeOverlays();
-    this.hud.classList.remove("hidden");
+    this.hud.show();
     this.setContext("game");
     this.showLevelTitle();
     this.showNowPlaying();
   }
 
-  // ---------- HUD ----------
-
-  private buildHud(): void {
-    const hud = el("div", "hud hidden");
-    const left = el("div", "hud-cluster");
-    const score = el("div", "chip");
-    score.innerHTML = `<span class="lbl">Score</span> <span class="val" id="hud-score">0</span>`;
-    const coins = el("div", "chip coins");
-    coins.innerHTML = `<span class="ico" id="hud-coin-ico">${this.icoTag("coin")}</span><div class="bar"><i id="hud-coinbar"></i></div><span class="val" id="hud-coins">0</span>`;
-    const lives = el("div", "chip");
-    lives.innerHTML = `<span class="ico">${this.icoTag("heart")}</span><span class="val" id="hud-lives">3</span>`;
-    // Item slot: the stashed "?" block special item, used with E/X or the
-    // on-screen item button.
-    const item = el("div", "chip item-slot");
-    item.innerHTML = `<span class="lbl">Item</span> <span class="val" id="hud-item">–</span>`;
-    // Account balance (the shop currency) — updates live as coins are collected.
-    const total = el("div", "chip total-coins");
-    total.innerHTML = `<span class="ico">${this.icoTag("coin")}</span><span class="lbl">Gesamt</span> <span class="val" id="hud-total">0</span>`;
-    left.append(score, coins, lives, item, total);
-
-    const right = el("div", "hud-cluster");
-    const level = el("div", "chip");
-    level.innerHTML = `<span class="lbl" id="hud-level">Lv 1</span>`;
-    const time = el("div", "chip time");
-    time.innerHTML = `<span class="ico">${this.icoTag("timer")}</span><span class="val" id="hud-time">0:00</span>`;
-    const tools = el("div", "hud-right");
-    const pause = this.iconButton("pause", () => this.requestPause());
-    tools.append(pause, this.touchToggleButton(), this.muteButton(), this.settingsButton());
-    right.append(level, time, tools);
-
-    hud.append(left, right);
-    this.root.appendChild(hud);
-    this.hud = hud;
-    this.hudEls = {
-      score: hud.querySelector("#hud-score") as HTMLElement,
-      coins: hud.querySelector("#hud-coins") as HTMLElement,
-      coinIco: hud.querySelector("#hud-coin-ico") as HTMLElement,
-      coinChip: coins,
-      coinbar: hud.querySelector("#hud-coinbar") as HTMLElement,
-      lives: hud.querySelector("#hud-lives") as HTMLElement,
-      total: hud.querySelector("#hud-total") as HTMLElement,
-      item: hud.querySelector("#hud-item") as HTMLElement,
-      level: hud.querySelector("#hud-level") as HTMLElement,
-      time: hud.querySelector("#hud-time") as HTMLElement,
-    };
-    this.refreshMuteIcon();
-  }
-
-  /** Inline <img> markup for a HUD stat icon. */
-  private icoTag(name: string): string {
-    return `<img src="${UI}/${name}.png" alt="" draggable="false">`;
-  }
-
-  /** Last-written HUD strings — updateHud runs every frame, but writing the DOM
-   *  60×/s forces style/layout recalcs, so only touch it when a value changed. */
-  private hudCache: Record<string, string> = {};
+  // ---------- HUD bridge (GameScene calls these every frame / per pickup) ----------
 
   updateHud(): void {
-    if (this.hud.classList.contains("hidden")) return;
-    this.setHudText("score", `${gameState.score}`);
-    // Level coins vs. the level's total (the "all coins" star goal); the bar
-    // fills in sync and is full exactly when every coin was collected.
-    const coins = `${gameState.levelCoins}/${gameState.levelCoinTotal}`;
-    if (this.hudCache.coins !== coins) {
-      this.setHudText("coins", coins);
-      const coinFrac =
-        gameState.levelCoinTotal > 0 ? gameState.levelCoins / gameState.levelCoinTotal : 0;
-      this.hudEls.coinbar.style.width = `${Math.min(1, coinFrac) * 100}%`;
-    }
-    this.setHudText("lives", `${Math.max(0, gameState.lives)}`);
-    this.setHudText("total", `${saveState.getTotalCoins()}`);
-    // Item slot + the mobile item button mirror the stashed special item.
-    const itemIcon =
-      gameState.heldItem === "fireburst" ? "🔥" : gameState.heldItem === "star" ? "💎" : "–";
-    if (this.hudCache.item !== itemIcon) {
-      this.setHudText("item", itemIcon);
-      if (this.touchItemBtn) {
-        this.touchItemBtn.textContent = itemIcon === "–" ? "◇" : itemIcon;
-        this.touchItemBtn.classList.toggle("has-item", itemIcon !== "–");
-      }
-    }
-    // Marathon: show the run progress and the total run clock (it keeps
-    // counting across levels and failed attempts — that's the leaderboard time).
-    if (gameState.isMarathon) {
-      this.setHudText("level", `Lv ${gameState.levelIndex + 1}/${LEVELS.length}`);
-      this.setHudText("time", fmtTime(gameState.runTime));
-    } else {
-      this.setHudText("level", `Lv ${gameState.levelIndex + 1}`);
-      this.setHudText("time", fmtTime(gameState.timeElapsed));
-    }
+    this.hud.update();
   }
 
-  private setHudText(key: string, text: string): void {
-    if (this.hudCache[key] === text) return;
-    this.hudCache[key] = text;
-    this.hudEls[key].textContent = text;
-  }
-
-  /**
-   * Fly a coin sprite from a viewport position into the HUD coin counter,
-   * then bump the counter chip. Called by GameScene on every coin pickup.
-   */
   flyCoinToHud(from: { x: number; y: number }): void {
-    if (this.hud.classList.contains("hidden")) return;
-    const target = this.hudEls.coinIco.getBoundingClientRect();
-    const size = Math.max(target.width, 24);
-    const coin = imgEl("coin", "fly-coin");
-    coin.style.left = `${from.x - size / 2}px`;
-    coin.style.top = `${from.y - size / 2}px`;
-    coin.style.width = `${size}px`;
-    coin.style.height = `${size}px`;
-    this.root.appendChild(coin);
-
-    const dx = target.left + target.width / 2 - from.x;
-    const dy = target.top + target.height / 2 - from.y;
-    coin
-      .animate(
-        [
-          { transform: "translate(0, 0) scale(1.25)", opacity: 1 },
-          {
-            transform: `translate(${dx * 0.35}px, ${dy * 0.35 - 40}px) scale(1.1)`,
-            opacity: 1,
-            offset: 0.4,
-          },
-          { transform: `translate(${dx}px, ${dy}px) scale(0.55)`, opacity: 0.9 },
-        ],
-        { duration: 520, easing: "cubic-bezier(0.35, 0, 0.6, 1)" }
-      )
-      .onfinish = () => {
-      coin.remove();
-      // Pop the counter chip so the arrival reads as "counted".
-      const chip = this.hudEls.coinChip;
-      chip.classList.remove("bump");
-      void chip.offsetWidth; // restart the animation on rapid pickups
-      chip.classList.add("bump");
-    };
-    // Safety net if animations are throttled (hidden tab).
-    window.setTimeout(() => coin.remove(), 1200);
+    this.hud.flyCoin(this.root, from);
   }
 
   showLevelTitle(): void {
+    // The marathon splash IS the (bigger) title card — don't double up.
+    if (document.getElementById("marathon-splash")) return;
     const card = el("div", "title");
     Object.assign(card.style, {
       position: "absolute",
@@ -1156,6 +741,36 @@ class UIManager {
       ],
       { duration: 2200, easing: "ease-out" }
     ).onfinish = () => card.remove();
+  }
+
+  /**
+   * Marathon world-title splash between levels: a full-screen theme-tinted
+   * card announcing the next stage while the scene restarts underneath.
+   */
+  showMarathonSplash(levelIndex: number): void {
+    const lvl = getLevel(levelIndex);
+    if (!lvl) return;
+    document.getElementById("marathon-splash")?.remove();
+
+    const o = el("div", "marathon-splash");
+    o.id = "marathon-splash";
+    o.style.setProperty("--ms-accent", THEME_ACCENT[lvl.theme]);
+    o.innerHTML =
+      `<div class="ms-count">LEVEL ${levelIndex + 1} / ${MARATHON_LEVEL_COUNT}</div>` +
+      `<div class="ms-title">${lvl.title}</div>` +
+      `<div class="ms-bar"></div>`;
+    this.root.appendChild(o);
+    o.animate(
+      [
+        { opacity: 0 },
+        { opacity: 1, offset: 0.12 },
+        { opacity: 1, offset: 0.8 },
+        { opacity: 0 },
+      ],
+      { duration: 2400, easing: "ease-out" }
+    ).onfinish = () => o.remove();
+    // Safety net if the tab is hidden and animations are throttled.
+    window.setTimeout(() => o.remove(), 3200);
   }
 
   /**
@@ -1287,7 +902,7 @@ class UIManager {
   showComplete(data: CompleteData): void {
     this.stopGame();
     this.completeLast = data.lastLevel;
-    this.hud.classList.add("hidden");
+    this.hud.hide();
     const o = this.overlay(true);
     const p = el("div", "panel wide");
     p.append(el("div", "panel-title", data.lastLevel ? "YOU WIN!" : "LEVEL COMPLETE"));
@@ -1346,11 +961,11 @@ class UIManager {
   showMarathonComplete(data: MarathonCompleteData): void {
     this.stopGame();
     this.completeLast = true; // Enter on this screen goes home
-    this.hud.classList.add("hidden");
+    this.hud.hide();
     const o = this.overlay(true);
     const p = el("div", "panel wide");
     p.append(el("div", "panel-title", "MARATHON GESCHAFFT!"));
-    p.append(el("div", "muted-text mode-subtitle", `Alle ${LEVELS.length} Level am Stück bezwungen`));
+    p.append(el("div", "muted-text mode-subtitle", `Alle ${MARATHON_LEVEL_COUNT} Level am Stück bezwungen`));
 
     const timeBox =
       `<div class="stat-box time"><span class="k">Gesamtzeit</span>` +
@@ -1385,7 +1000,7 @@ class UIManager {
   showGameOver(): void {
     saveState.recordScore(gameState.score);
     this.stopGame();
-    this.hud.classList.add("hidden");
+    this.hud.hide();
     const marathon = gameState.isMarathon;
     const o = this.overlay(true);
     const p = el("div", "panel purple");
@@ -1438,132 +1053,14 @@ class UIManager {
     this.refreshMuteIcon();
   }
 
-  // ---------- Settings ----------
-
-  /**
-   * Open the settings dialog (music + SFX volume). Rendered as its own overlay
-   * stacked over whatever is on screen, so it never destroys an underlying pause
-   * panel. If opened during live gameplay it freezes the scene until closed.
-   */
-  showSettings(): void {
-    // Adjusting SFX volume should be audible immediately — make sure audio is live.
-    audioManager.unlock();
-
-    const gs = this.game.scene.getScene(SceneKeys.Game) as unknown as { canPause?: boolean };
-    if (
-      this.ctx === "game" &&
-      this.game.scene.isActive(SceneKeys.Game) &&
-      !this.game.scene.isPaused(SceneKeys.Game) &&
-      gs?.canPause !== false
-    ) {
-      this.game.scene.pause(SceneKeys.Game);
-      this.game.sound.pauseAll();
-      this.settingsResume = () => {
-        this.game.scene.resume(SceneKeys.Game);
-        this.game.sound.resumeAll();
-      };
-    }
-
-    const o = el("div", "ui-overlay settings-overlay");
-    const p = el("div", "panel teal settings-panel");
-    p.appendChild(el("div", "panel-title", "OPTIONEN"));
-
-    p.appendChild(
-      this.volumeRow("music", "Musik", saveState.getMusicVolume(), (v) => {
-        saveState.setMusicVolume(v);
-        this.applyMusicVolume();
-      })
-    );
-    p.appendChild(
-      this.volumeRow(
-        "sfx",
-        "Effekte",
-        saveState.getSfxVolume(),
-        (v) => audioManager.setSfxVolume(v),
-        () => audioManager.play("coin") // preview on release
-      )
-    );
-
-    const back = button("ZURÜCK", "blue");
-    back.onclick = () => this.closeSettings();
-    p.appendChild(back);
-
-    o.appendChild(p);
-    // Click on the dimmed backdrop (outside the panel) closes the dialog.
-    o.onclick = (e) => {
-      if (e.target === o) this.closeSettings();
-    };
-    this.root.appendChild(o);
-  }
-
-  /** Callback that un-freezes gameplay when the settings dialog was opened over it. */
-  private settingsResume: (() => void) | null = null;
-
-  private closeSettings(): void {
-    const open = this.root.querySelectorAll(".settings-overlay");
-    if (open.length === 0) return;
-    open.forEach((o) => o.remove());
-    if (this.settingsResume) {
-      const resume = this.settingsResume;
-      this.settingsResume = null;
-      resume();
-    }
-  }
-
-  /**
-   * A labelled volume slider (icon label + range + live percentage). `onChange`
-   * fires continuously while dragging; the optional `onRelease` fires once the
-   * drag ends (used to play a preview sound at the new level).
-   */
-  private volumeRow(
-    icon: "music" | "sfx",
-    label: string,
-    initial: number,
-    onChange: (v: number) => void,
-    onRelease?: () => void
-  ): HTMLElement {
-    const row = el("div", "settings-row");
-
-    const glyph = icon === "music"
-      ? `<path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle>`
-      : `<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.5 8.5a5 5 0 0 1 0 7"></path><path d="M19 5a9 9 0 0 1 0 14"></path>`;
-    const lbl = el("div", "settings-label");
-    lbl.innerHTML = `
-      <svg viewBox="0 0 24 24" width="3.4vmin" height="3.4vmin" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${glyph}</svg>
-      <span>${label}</span>`;
-
-    const control = el("div", "settings-control");
-    const input = el("input", "settings-slider") as HTMLInputElement;
-    input.type = "range";
-    input.min = "0";
-    input.max = "100";
-    input.step = "1";
-    input.value = String(Math.round(initial * 100));
-
-    const pct = el("div", "settings-pct", `${input.value}%`);
-    const paint = () => input.style.setProperty("--fill", `${input.value}%`);
-    paint();
-
-    input.oninput = () => {
-      pct.textContent = `${input.value}%`;
-      paint();
-      onChange(Number(input.value) / 100);
-    };
-    if (onRelease) input.onchange = () => onRelease();
-
-    control.append(input, pct);
-    row.append(lbl, control);
-    return row;
-  }
-
   // ---------- Keyboard ----------
 
   private onKey(e: KeyboardEvent): void {
     const k = e.key;
     // The settings dialog is modal: Escape closes it and swallows other keys so
     // they can't leak into the game/menu behind it.
-    if (this.root.querySelector(".settings-overlay")) {
-      if (k === "Escape") this.closeSettings();
+    if (this.settings.isOpen) {
+      if (k === "Escape") this.settings.close();
       return;
     }
     // The shop is modal too: Escape returns home, everything else is swallowed

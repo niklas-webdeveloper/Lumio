@@ -31,6 +31,8 @@ export class PreloadScene extends Phaser.Scene {
     this.load.audio("bgm-2", "assets/audio/music/track2.m4a");
     this.load.audio("bgm-3", "assets/audio/music/track3.m4a");
     this.load.audio("bgm-4", "assets/audio/music/track4.m4a");
+    this.load.audio("bgm-5", "assets/audio/music/track5.m4a");
+    this.load.audio("bgm-6", "assets/audio/music/track6.m4a");
     loadHeroAssets(this); // character sprite sheets + portrait
     loadWorldArt(this); // tileset, blocks, item/enemy strips (SunnyLand art)
     loadBackgrounds(this); // per-level parallax background layers

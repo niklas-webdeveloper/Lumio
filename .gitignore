@@ -30,3 +30,6 @@ yarn-error.log*
 
 # Player saves database
 /saves/
+
+# Raw Unity UI kit (source pack; the composed PNGs live in public/assets/ui)
+/Hyper_Casual_UI/

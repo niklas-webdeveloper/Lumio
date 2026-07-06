@@ -28,7 +28,7 @@ function sanitizeUsername(username) {
 
 // Default save template matching the game's SaveData
 const DEFAULT_SAVE = {
-  unlockedLevel: 3, // Defaults to unlocking all levels per the game's original SaveState load code
+  unlockedLevel: 0, // progression is earned — clearing a level unlocks the next
   highScore: 0,
   muted: false,
   levelStars: [],
@@ -40,13 +40,16 @@ const DEFAULT_SAVE = {
   selectedCharacter: "lumio",
 };
 
+// Number of levels the leaderboard tracks (level-01 .. level-06).
+const LEVEL_COUNT = 6;
+
 // Collect one player's save into the leaderboard accumulator (per-level times
 // under numeric keys, marathon runs under "marathon").
 function accumulateLeaderboard(leaderboard, username, data) {
   const bestTimes = data?.bestTimes || [];
   const levelStars = data?.levelStars || [];
 
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < LEVEL_COUNT; i++) {
     const time = bestTimes[i] || 0;
     const stars = levelStars[i] || 0;
 
@@ -68,10 +71,17 @@ function accumulateLeaderboard(leaderboard, username, data) {
 
 // Sort every board by time (ascending) and keep the top 3.
 function finalizeLeaderboard(leaderboard) {
-  for (const key of [0, 1, 2, 3, "marathon"]) {
+  for (const key of Object.keys(leaderboard)) {
     leaderboard[key].sort((a, b) => a.time - b.time);
     leaderboard[key] = leaderboard[key].slice(0, 3);
   }
+}
+
+// Fresh empty leaderboard: one board per level plus the marathon board.
+function emptyLeaderboard() {
+  const board = { marathon: [] };
+  for (let i = 0; i < LEVEL_COUNT; i++) board[i] = [];
+  return board;
 }
 
 // MongoDB setup
@@ -171,13 +181,7 @@ app.post("/api/saves/:username", async (req, res) => {
 
 // GET endpoint to calculate and retrieve the global leaderboard
 app.get("/api/leaderboard", async (req, res) => {
-  const leaderboard = {
-    0: [],
-    1: [],
-    2: [],
-    3: [],
-    marathon: []
-  };
+  const leaderboard = emptyLeaderboard();
 
   // Use MongoDB if available
   if (db) {
