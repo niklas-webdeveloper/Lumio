@@ -35,6 +35,9 @@ const DEFAULT_SAVE = {
   bestTimes: [],
   bestCoins: [],
   bestMarathon: null, // { time, coins, deaths } — fastest full-run clear
+  totalCoins: 0, // account coin balance (collected minus shop purchases)
+  ownedCharacters: ["lumio"], // shop unlocks; Lumio is the free starter
+  selectedCharacter: "lumio",
 };
 
 // Collect one player's save into the leaderboard accumulator (per-level times

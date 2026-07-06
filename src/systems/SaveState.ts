@@ -4,6 +4,9 @@
  * (e.g. private mode). Kept tiny and serializable for easy extension.
  */
 
+import type { CharacterId } from "@/config/characterAssets";
+import { CHARACTERS } from "@/config/characterAssets";
+
 /** Result of a completed marathon run (all levels back to back). */
 export interface MarathonRecord {
   /** Total run time in seconds (including failed attempts). */
@@ -31,6 +34,12 @@ export interface SaveData {
   bestCoins: number[];
   /** Fastest completed marathon run; null until the first clear. */
   bestMarathon: MarathonRecord | null;
+  /** Account coin balance: every coin ever collected, minus shop purchases. */
+  totalCoins: number;
+  /** Characters unlocked in the shop ("lumio" is always owned). */
+  ownedCharacters: CharacterId[];
+  /** The character the player has picked to play as. */
+  selectedCharacter: CharacterId;
 }
 
 const DEFAULT_SAVE: SaveData = {
@@ -43,11 +52,37 @@ const DEFAULT_SAVE: SaveData = {
   bestTimes: [],
   bestCoins: [],
   bestMarathon: null,
+  totalCoins: 0,
+  ownedCharacters: ["lumio"],
+  selectedCharacter: "lumio",
 };
 
 class SaveState {
   private cache: SaveData | null = null;
   public currentUsername: string | null = null;
+
+  constructor() {
+    // A debounced coin sync (persistSoon) still pending when the tab closes
+    // or goes to background would be lost — flush it with a beacon, which
+    // survives page teardown. visibilitychange covers mobile/tab-switch
+    // cases where pagehide never fires.
+    window.addEventListener("pagehide", () => this.flushPendingSync());
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") this.flushPendingSync();
+    });
+  }
+
+  /** Send a pending debounced save via beacon (safe during page teardown). */
+  private flushPendingSync(): void {
+    if (!this.syncTimer || !this.currentUsername) return;
+    clearTimeout(this.syncTimer);
+    this.syncTimer = null;
+    const sanitized = this.currentUsername.replace(/[^a-zA-Z0-9_\-]/g, "").toLowerCase();
+    navigator.sendBeacon(
+      `/api/saves/${sanitized}`,
+      new Blob([JSON.stringify(this.load())], { type: "application/json" })
+    );
+  }
 
   /** Read the save (cached after first load). */
   load(): SaveData {
@@ -95,25 +130,59 @@ class SaveState {
     // Older saves predate per-channel volume — default to full volume.
     this.cache.musicVolume = clamp01(this.cache.musicVolume ?? 1);
     this.cache.sfxVolume = clamp01(this.cache.sfxVolume ?? 1);
+    // Older saves predate the character shop — normalize coins & ownership.
+    this.cache.totalCoins = Math.max(0, Math.floor(this.cache.totalCoins ?? 0));
+    const owned = new Set<CharacterId>(this.cache.ownedCharacters ?? []);
+    owned.add("lumio");
+    this.cache.ownedCharacters = [...owned].filter((id) => id in CHARACTERS);
+    // A selected character must exist and be owned, else fall back to Lumio.
+    const sel = this.cache.selectedCharacter;
+    this.cache.selectedCharacter =
+      sel && this.cache.ownedCharacters.includes(sel) ? sel : "lumio";
   }
 
+  /** Pending debounced backend sync (see persistSoon). */
+  private syncTimer: ReturnType<typeof setTimeout> | null = null;
+
   private persist(): void {
+    this.writeLocal();
+    this.postRemote();
+  }
+
+  /**
+   * Persist for high-frequency updates (one per collected coin): localStorage
+   * is written immediately, the backend POST is debounced so a coin streak
+   * results in a single request instead of one per coin.
+   */
+  private persistSoon(): void {
+    this.writeLocal();
+    if (this.syncTimer) clearTimeout(this.syncTimer);
+    this.syncTimer = setTimeout(() => this.postRemote(), 1500);
+  }
+
+  private writeLocal(): void {
     if (!this.currentUsername) return;
     const sanitized = this.currentUsername.replace(/[^a-zA-Z0-9_\-]/g, "").toLowerCase();
-    const data = this.load();
-
     try {
-      localStorage.setItem(`lumios-leap.save.${sanitized}`, JSON.stringify(data));
+      localStorage.setItem(`lumios-leap.save.${sanitized}`, JSON.stringify(this.load()));
     } catch {
       /* storage unavailable — progress simply isn't persisted */
     }
+  }
 
+  private postRemote(): void {
+    if (!this.currentUsername) return;
+    if (this.syncTimer) {
+      clearTimeout(this.syncTimer);
+      this.syncTimer = null;
+    }
+    const sanitized = this.currentUsername.replace(/[^a-zA-Z0-9_\-]/g, "").toLowerCase();
     fetch(`/api/saves/${sanitized}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify(data),
+      body: JSON.stringify(this.load()),
     }).catch((err) => {
       console.error("Failed to persist save state to backend:", err);
     });
@@ -234,6 +303,57 @@ class SaveState {
   setMusicVolume(volume: number): void {
     this.load().musicVolume = clamp01(volume);
     this.persist();
+  }
+
+  // ----- Character shop (account coin balance + owned/selected characters) -----
+
+  /** Account coin balance (every coin ever collected, minus purchases). */
+  getTotalCoins(): number {
+    return this.load().totalCoins ?? 0;
+  }
+
+  /** Credit collected coins to the account balance (debounced backend sync). */
+  addTotalCoins(count: number): void {
+    const data = this.load();
+    data.totalCoins = (data.totalCoins ?? 0) + count;
+    this.persistSoon();
+  }
+
+  getOwnedCharacters(): CharacterId[] {
+    return this.load().ownedCharacters ?? ["lumio"];
+  }
+
+  isCharacterOwned(id: CharacterId): boolean {
+    return this.getOwnedCharacters().includes(id);
+  }
+
+  /**
+   * Buy a character from the account balance. Returns true on success (enough
+   * coins, not already owned); the new character is selected right away.
+   */
+  buyCharacter(id: CharacterId, price: number): boolean {
+    const data = this.load();
+    if (this.isCharacterOwned(id)) return false;
+    if ((data.totalCoins ?? 0) < price) return false;
+    data.totalCoins -= price;
+    data.ownedCharacters = [...this.getOwnedCharacters(), id];
+    data.selectedCharacter = id;
+    this.persist();
+    return true;
+  }
+
+  getSelectedCharacter(): CharacterId {
+    const data = this.load();
+    const sel = data.selectedCharacter ?? "lumio";
+    return this.isCharacterOwned(sel) ? sel : "lumio";
+  }
+
+  /** Pick the character to play as (must be owned). Returns true if applied. */
+  setSelectedCharacter(id: CharacterId): boolean {
+    if (!this.isCharacterOwned(id)) return false;
+    this.load().selectedCharacter = id;
+    this.persist();
+    return true;
   }
 
   /** Sound-effects volume, 0..1. */

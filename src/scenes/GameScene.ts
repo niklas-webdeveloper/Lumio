@@ -401,6 +401,7 @@ export class GameScene extends Phaser.Scene {
   /** Award a coin with sparkle + sound, voicing a fanfare on a bonus life. */
   private collectCoin(x: number, y: number): void {
     const { extraLife } = gameState.addCoin();
+    saveState.addTotalCoins(1); // account balance for the character shop
     this.particles.coinSparkle(x, y);
     ui.flyCoinToHud(this.worldToViewport(x, y));
     audioManager.play(extraLife ? "extralife" : "coin");

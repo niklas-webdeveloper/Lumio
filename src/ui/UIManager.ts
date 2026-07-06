@@ -1,7 +1,7 @@
 import type Phaser from "phaser";
 import "./ui.css";
-import heroUrl from "../../character/character.png";
 import { SceneKeys } from "@/config/AssetKeys";
+import { CHARACTERS, CHARACTER_LIST, type CharacterId } from "@/config/characterAssets";
 import { LEVELS, getLevel, countLevelCoins } from "@/config/levels";
 import { gameState } from "@/systems/GameState";
 import { saveState, type MarathonRecord } from "@/systems/SaveState";
@@ -367,7 +367,7 @@ class UIManager {
         im.decode?.().then(() => resolve()).catch(() => resolve());
       });
     const all = Promise.all([
-      decode(heroUrl),
+      ...CHARACTER_LIST.map((c) => decode(c.portrait.url)),
       ...PRELOAD_IMAGES.map((n) => decode(`${UI}/${n}.png`)),
     ]).then(() => undefined);
     const timeout = new Promise<void>((resolve) => setTimeout(resolve, 1800));
@@ -459,8 +459,12 @@ class UIManager {
     const stage = el("div", "home-stage");
     const hero = el("div", "home-hero");
     const img = el("img");
-    img.src = heroUrl;
+    img.id = "home-hero-img";
+    img.src = CHARACTERS.lumio.portrait.url;
     hero.appendChild(img);
+    const heroName = el("div", "home-hero-name");
+    heroName.id = "home-hero-name";
+    hero.appendChild(heroName);
 
     const actions = el("div", "home-actions");
     const play = button("PLAY", "green", { big: true, icon: "play" });
@@ -470,10 +474,14 @@ class UIManager {
     hi.appendChild(imgEl("crown"));
     hi.appendChild(el("span", "", "High Score 0"));
 
+    const row = el("div", "home-btn-row");
+    const shop = button("SHOP", "gold", { icon: "coin" });
+    shop.onclick = () => this.showShop();
     const leaderboard = button("BESTENLISTE", "orange", { icon: "star" });
     leaderboard.onclick = () => this.showLeaderboard();
+    row.append(shop, leaderboard);
 
-    actions.append(play, hi, leaderboard);
+    actions.append(play, hi, row);
 
     stage.append(hero, actions);
     const hint = el("div", "hint", "Press SPACE / ENTER · character by Kibyra");
@@ -490,6 +498,14 @@ class UIManager {
     }
     const hi = this.screens.home.querySelector("#home-hi span") as HTMLElement;
     hi.textContent = `Spieler: ${saveState.currentUsername}`;
+
+    // The stage shows whichever character is currently picked to play.
+    const char = CHARACTERS[saveState.getSelectedCharacter()];
+    const heroImg = this.screens.home.querySelector("#home-hero-img") as HTMLImageElement;
+    heroImg.src = char.portrait.url;
+    heroImg.classList.toggle("pixelated", char.pixelArt);
+    const heroName = this.screens.home.querySelector("#home-hero-name") as HTMLElement;
+    heroName.textContent = char.name;
     
     const hiContainer = this.screens.home.querySelector("#home-hi") as HTMLElement;
     if (hiContainer) {
@@ -671,6 +687,102 @@ class UIManager {
 
     p.appendChild(closeBtn);
     o.appendChild(p);
+  }
+
+  // ---------- Character shop ----------
+
+  /**
+   * The character shop: shows the account coin balance, one card per
+   * character, and lets the player buy locked characters or switch the
+   * active one. Selection persists in the save (local + backend).
+   */
+  showShop(): void {
+    this.stopGame();
+    this.hideAll();
+    this.closeOverlays();
+    this.setContext("home");
+
+    const o = this.overlay(true);
+    o.id = "shop-overlay";
+
+    const p = el("div", "panel purple wide shop-panel");
+    p.appendChild(el("div", "panel-title", "SHOP"));
+
+    // Account balance: every coin collected in any run lands here.
+    const balance = el("div", "shop-balance");
+    balance.innerHTML =
+      `${this.icoTag("coin")}<span class="val">${saveState.getTotalCoins()}</span>` +
+      `<span class="lbl">Münzen auf deinem Konto</span>`;
+    p.appendChild(balance);
+
+    const grid = el("div", "shop-grid");
+    for (const char of CHARACTER_LIST) grid.appendChild(this.shopCard(char.id));
+    p.appendChild(grid);
+
+    const closeBtn = button("ZURÜCK", "blue", { icon: "home" });
+    closeBtn.onclick = () => this.showHome();
+    p.appendChild(closeBtn);
+    o.appendChild(p);
+  }
+
+  /** One character card in the shop (portrait, name, price / select state). */
+  private shopCard(id: CharacterId): HTMLElement {
+    const char = CHARACTERS[id];
+    const owned = saveState.isCharacterOwned(id);
+    const selected = saveState.getSelectedCharacter() === id;
+    const balance = saveState.getTotalCoins();
+
+    const card = el("div", `shop-card${selected ? " selected" : ""}${owned ? "" : " locked"}`);
+
+    const frame = el("div", "shop-portrait");
+    const img = el("img");
+    img.src = char.portrait.url;
+    img.draggable = false;
+    if (char.pixelArt) img.classList.add("pixelated");
+    frame.appendChild(img);
+    if (selected) frame.appendChild(el("div", "shop-active-badge", "AKTIV"));
+    card.appendChild(frame);
+
+    card.appendChild(el("div", "shop-name", char.name));
+    card.appendChild(el("div", "shop-tagline", char.tagline));
+
+    if (selected) {
+      const b = button("AUSGEWÄHLT", "grey");
+      b.disabled = true;
+      card.appendChild(b);
+    } else if (owned) {
+      const b = button("AUSWÄHLEN", "green");
+      b.onclick = () => {
+        saveState.setSelectedCharacter(id);
+        audioManager.play("coin");
+        this.showShop(); // re-render with the new selection
+      };
+      card.appendChild(b);
+    } else {
+      const price = el("div", "shop-price");
+      price.innerHTML = `${this.icoTag("coin")}<span>${char.price}</span>`;
+      card.appendChild(price);
+
+      const affordable = balance >= char.price;
+      const b = button("KAUFEN", affordable ? "gold" : "grey");
+      if (affordable) {
+        b.onclick = () => {
+          if (!saveState.buyCharacter(id, char.price)) return;
+          audioManager.play("extralife"); // little fanfare for the unlock
+          this.showShop(); // re-render: card flips to owned + selected
+        };
+      } else {
+        b.disabled = true;
+        card.appendChild(b);
+        const missing = char.price - balance;
+        card.appendChild(
+          el("div", "shop-hint", `Noch ${missing} Münzen sammeln!`)
+        );
+        return card;
+      }
+      card.appendChild(b);
+    }
+    return card;
   }
 
   // ---------- Mode select ----------
@@ -860,7 +972,10 @@ class UIManager {
     coins.innerHTML = `<span class="ico" id="hud-coin-ico">${this.icoTag("coin")}</span><div class="bar"><i id="hud-coinbar"></i></div><span class="val" id="hud-coins">0</span>`;
     const lives = el("div", "chip");
     lives.innerHTML = `<span class="ico">${this.icoTag("heart")}</span><span class="val" id="hud-lives">3</span>`;
-    left.append(score, coins, lives);
+    // Account balance (the shop currency) — updates live as coins are collected.
+    const total = el("div", "chip total-coins");
+    total.innerHTML = `<span class="ico">${this.icoTag("coin")}</span><span class="lbl">Gesamt</span> <span class="val" id="hud-total">0</span>`;
+    left.append(score, coins, lives, total);
 
     const right = el("div", "hud-cluster");
     const level = el("div", "chip");
@@ -882,6 +997,7 @@ class UIManager {
       coinChip: coins,
       coinbar: hud.querySelector("#hud-coinbar") as HTMLElement,
       lives: hud.querySelector("#hud-lives") as HTMLElement,
+      total: hud.querySelector("#hud-total") as HTMLElement,
       level: hud.querySelector("#hud-level") as HTMLElement,
       time: hud.querySelector("#hud-time") as HTMLElement,
     };
@@ -910,6 +1026,7 @@ class UIManager {
       this.hudEls.coinbar.style.width = `${Math.min(1, coinFrac) * 100}%`;
     }
     this.setHudText("lives", `${Math.max(0, gameState.lives)}`);
+    this.setHudText("total", `${saveState.getTotalCoins()}`);
     // Marathon: show the run progress and the total run clock (it keeps
     // counting across levels and failed attempts — that's the leaderboard time).
     if (gameState.isMarathon) {
@@ -1398,6 +1515,12 @@ class UIManager {
     // they can't leak into the game/menu behind it.
     if (this.root.querySelector(".settings-overlay")) {
       if (k === "Escape") this.closeSettings();
+      return;
+    }
+    // The shop is modal too: Escape returns home, everything else is swallowed
+    // (so Enter/Space can't start a game behind the open shop).
+    if (this.root.querySelector("#shop-overlay")) {
+      if (k === "Escape") this.showHome();
       return;
     }
     if (document.activeElement?.tagName === "INPUT" || document.activeElement?.tagName === "TEXTAREA") {

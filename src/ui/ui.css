@@ -444,6 +444,196 @@
   z-index: 2;
 }
 
+/* ---- Character shop ---- */
+.pixelated {
+  image-rendering: pixelated;
+}
+.home-hero-name {
+  position: absolute;
+  bottom: -3.4vmin;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0.4vmin 2.2vmin;
+  border-radius: 10vmin;
+  background: rgba(0, 20, 30, 0.35);
+  border: 0.25vmin solid rgba(255, 255, 255, 0.2);
+  font-family: "Baloo 2", sans-serif;
+  font-weight: 800;
+  font-size: 2.4vmin;
+  color: var(--gold-soft);
+  text-shadow: 0 0.2vmin 0.2vmin rgba(0, 0, 0, 0.45);
+  white-space: nowrap;
+}
+.home-hero {
+  position: relative;
+}
+.home-btn-row {
+  display: flex;
+  gap: 2vmin;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.shop-panel {
+  gap: 2.2vmin;
+}
+.shop-balance {
+  display: inline-flex;
+  align-items: center;
+  gap: 1.2vmin;
+  padding: 1vmin 2.8vmin;
+  border-radius: 10vmin;
+  background: linear-gradient(180deg, rgba(0, 20, 30, 0.45), rgba(0, 20, 30, 0.25));
+  border: 0.3vmin solid var(--gold);
+  box-shadow: inset 0 0.3vmin 0 rgba(255, 255, 255, 0.12);
+}
+.shop-balance img {
+  width: 3.4vmin;
+  height: 3.4vmin;
+  object-fit: contain;
+}
+.shop-balance .val {
+  font-family: "Baloo 2", sans-serif;
+  font-weight: 800;
+  font-size: 3.2vmin;
+  line-height: 1;
+  color: #fff;
+  paint-order: stroke fill;
+  -webkit-text-stroke: 0.4vmin var(--ink);
+}
+.shop-balance .lbl {
+  font-size: 2vmin;
+  font-weight: 700;
+  color: var(--gold-soft);
+  text-shadow: 0 0.2vmin 0.2vmin rgba(0, 0, 0, 0.4);
+}
+.shop-grid {
+  display: flex;
+  gap: 3vmin;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.shop-card {
+  pointer-events: auto;
+  position: relative;
+  width: 28vmin;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1vmin;
+  padding: 2.2vmin 2vmin 2.4vmin;
+  border-radius: 2.4vmin;
+  background: linear-gradient(180deg, var(--teal-top) 0%, var(--teal-bottom) 100%);
+  border: 0.7vmin solid var(--gold);
+  box-shadow:
+    inset 0 0.4vmin 0 rgba(255, 255, 255, 0.25),
+    inset 0 -1vmin 1.6vmin rgba(0, 20, 40, 0.3),
+    0 0.9vmin 1.6vmin rgba(0, 15, 30, 0.45);
+  transition: transform 0.12s ease, filter 0.16s ease, box-shadow 0.16s ease;
+}
+.shop-card:hover {
+  transform: translateY(-0.6vmin);
+  filter: brightness(1.05);
+}
+.shop-card.selected {
+  box-shadow:
+    inset 0 0.4vmin 0 rgba(255, 255, 255, 0.3),
+    0 0 0 0.5vmin rgba(255, 255, 255, 0.55),
+    0 0 3vmin rgba(255, 224, 130, 0.45),
+    0 1.2vmin 2vmin rgba(0, 15, 30, 0.5);
+}
+.shop-card.locked .shop-portrait img {
+  filter: grayscale(0.9) brightness(0.55) drop-shadow(0 0.5vmin 0.6vmin rgba(0, 10, 20, 0.5));
+}
+.shop-portrait {
+  position: relative;
+  width: 16vmin;
+  height: 16vmin;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  border-radius: 2vmin;
+  background:
+    radial-gradient(90% 70% at 50% 20%, rgba(255, 255, 255, 0.16), transparent 60%),
+    rgba(0, 20, 30, 0.3);
+  box-shadow: inset 0 0.3vmin 0.8vmin rgba(0, 10, 20, 0.4);
+  overflow: hidden;
+}
+.shop-portrait img {
+  max-width: 82%;
+  max-height: 88%;
+  object-fit: contain;
+  filter: drop-shadow(0 0.5vmin 0.6vmin rgba(0, 10, 20, 0.5));
+}
+.shop-active-badge {
+  position: absolute;
+  top: 0.8vmin;
+  right: 0.8vmin;
+  padding: 0.3vmin 1.2vmin;
+  border-radius: 2vmin;
+  background: linear-gradient(180deg, var(--gold-soft), var(--gold-deep));
+  border: 0.25vmin solid #fff8e0;
+  font-size: 1.5vmin;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: #4a2f00;
+  box-shadow: 0 0.3vmin 0.6vmin rgba(0, 0, 0, 0.35);
+  animation: recordPop 0.45s cubic-bezier(0.2, 1.5, 0.5, 1) both;
+}
+.shop-name {
+  font-family: "Baloo 2", sans-serif;
+  font-weight: 800;
+  font-size: 3.2vmin;
+  line-height: 1;
+  color: #fff;
+  paint-order: stroke fill;
+  -webkit-text-stroke: 0.45vmin var(--ink);
+  text-shadow: 0 0.35vmin 0 var(--gold-deep);
+}
+.shop-tagline {
+  min-height: 4.6vmin;
+  font-size: 1.9vmin;
+  font-weight: 700;
+  line-height: 1.3;
+  text-align: center;
+  color: #eafcff;
+  text-shadow: 0 0.2vmin 0.2vmin rgba(0, 20, 30, 0.5);
+}
+.shop-price {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.9vmin;
+  padding: 0.5vmin 1.8vmin;
+  border-radius: 10vmin;
+  background: rgba(0, 20, 30, 0.35);
+  font-family: "Baloo 2", sans-serif;
+  font-weight: 800;
+  font-size: 2.6vmin;
+  color: var(--gold-soft);
+  text-shadow: 0 0.2vmin 0.2vmin rgba(0, 0, 0, 0.4);
+}
+.shop-price img {
+  width: 2.8vmin;
+  height: 2.8vmin;
+  object-fit: contain;
+}
+.shop-card .btn {
+  min-width: 20vmin;
+  height: 6.4vmin;
+  font-size: 2.4vmin;
+  padding: 0 3vmin 0.5vmin;
+}
+.shop-card .btn:disabled {
+  cursor: default;
+  filter: saturate(0.5) brightness(0.9) drop-shadow(0 0.4vmin 0.4vmin rgba(0, 20, 30, 0.3));
+  transform: none;
+}
+.shop-hint {
+  font-size: 1.8vmin;
+  font-weight: 700;
+  color: #ffb9a6;
+  text-shadow: 0 0.2vmin 0.2vmin rgba(0, 0, 0, 0.45);
+}
+
 /* ---- Mode select ---- */
 .mode-grid {
   display: flex;
@@ -726,6 +916,18 @@
 .chip .lbl {
   paint-order: stroke fill;
   -webkit-text-stroke: 0.35vmin var(--ink);
+}
+/* Account balance chip (the shop currency): golden trim sets it apart from
+   the per-level coin counter next to it. */
+.chip.total-coins {
+  background: linear-gradient(180deg, #8a6a24 0%, #5f4517 100%);
+}
+.chip.total-coins .val {
+  color: var(--coin);
+}
+.chip.total-coins .lbl {
+  font-size: 2vmin;
+  color: var(--gold-soft);
 }
 .bar {
   width: 13vmin;

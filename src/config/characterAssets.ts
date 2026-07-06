@@ -1,76 +1,165 @@
-import type Phaser from "phaser";
-// Character art by Kibyra (https://kibyra.itch.io) — see character/license.txt.
+import Phaser from "phaser";
+// Lumio art by Kibyra (https://kibyra.itch.io) — see character/license.txt.
 // Imported from the project's `character/` folder; Vite bundles & hashes them.
-import idleUrl from "../../character/idle/idle.png";
-import runUrl from "../../character/running/running.png";
-import jumpUrl from "../../character/jumping/jump.png";
-import fallUrl from "../../character/falling/fall.png";
-import landUrl from "../../character/landing/land.png";
-import dashUrl from "../../character/dashing/dash.png";
-import runJumpUrl from "../../character/runningjump/runningjump.png";
-import portraitUrl from "../../character/character.png";
+import lumioIdleUrl from "../../character/idle/idle.png";
+import lumioRunUrl from "../../character/running/running.png";
+import lumioJumpUrl from "../../character/jumping/jump.png";
+import lumioFallUrl from "../../character/falling/fall.png";
+import lumioLandUrl from "../../character/landing/land.png";
+import lumioDashUrl from "../../character/dashing/dash.png";
+import lumioRunJumpUrl from "../../character/runningjump/runningjump.png";
+import lumioPortraitUrl from "../../character/character.png";
+// Foxy art from the SunnyLand pack (Ansimuz) — sheets generated into
+// `character-fox/` by scripts/build-fox-character.py (same 128px cell layout
+// as Lumio, so both characters share the Player's physics tuning untouched).
+import foxIdleUrl from "../../character-fox/idle.png";
+import foxRunUrl from "../../character-fox/run.png";
+import foxJumpUrl from "../../character-fox/jump.png";
+import foxFallUrl from "../../character-fox/fall.png";
+import foxLandUrl from "../../character-fox/land.png";
+import foxRunJumpUrl from "../../character-fox/runjump.png";
+import foxClimbUrl from "../../character-fox/climb.png";
+import foxPortraitUrl from "../../character-fox/portrait.png";
 
 /** All sheets use a uniform 128×128 frame; Phaser slices them row-major. */
 export const HERO_FRAME = 128;
 
-/** Sprite-sheet definitions: load key, source URL, and frame count. */
-export const HeroSheet = {
-  idle: { key: "hero_idle", url: idleUrl, frames: 7 },
-  run: { key: "hero_run", url: runUrl, frames: 12 },
-  jump: { key: "hero_jump", url: jumpUrl, frames: 13 },
-  fall: { key: "hero_fall", url: fallUrl, frames: 9 },
-  land: { key: "hero_land", url: landUrl, frames: 8 },
-  dash: { key: "hero_dash", url: dashUrl, frames: 5 },
-  runjump: { key: "hero_runjump", url: runJumpUrl, frames: 7 },
-} as const;
+export type CharacterId = "lumio" | "fox";
 
-/** Standalone portrait (used on the home screen). */
-export const HeroPortrait = { key: "hero_portrait", url: portraitUrl } as const;
-
-/** Animation keys created from the sheets. */
-export const HeroAnim = {
-  idle: "hero-idle",
-  run: "hero-run",
-  jump: "hero-jump",
-  fall: "hero-fall",
-  land: "hero-land",
-  dash: "hero-dash",
-  runjump: "hero-runjump",
-} as const;
-
-/** Queue all character sprite sheets + portrait for loading (call in preload). */
-export function loadHeroAssets(scene: Phaser.Scene): void {
-  const cfg = { frameWidth: HERO_FRAME, frameHeight: HERO_FRAME };
-  for (const s of Object.values(HeroSheet)) {
-    scene.load.spritesheet(s.key, s.url, cfg);
-  }
-  scene.load.image(HeroPortrait.key, HeroPortrait.url);
+/** Sprite-sheet definition: load key, source URL, and frame count. */
+interface SheetDef {
+  key: string;
+  url: string;
+  frames: number;
 }
 
-/** Register the character's animations (global; call once after loading). */
+/** The animation slots every playable character must fill. */
+type AnimSlot = "idle" | "run" | "jump" | "fall" | "land" | "dash" | "runjump";
+
+export interface CharacterDef {
+  id: CharacterId;
+  name: string;
+  /** One-liner shown on the shop card. */
+  tagline: string;
+  /** Shop price in account coins (0 = starter character). */
+  price: number;
+  /** Nearest-neighbor filtering for crisp upscaled pixel art. */
+  pixelArt: boolean;
+  portrait: { key: string; url: string };
+  /** Sheets per animation slot (slots may share one sheet, e.g. dash = run). */
+  sheets: Record<AnimSlot, SheetDef>;
+  /** Extra sheets used for static poses only (no animation slot). */
+  extraSheets: SheetDef[];
+  /** Animation keys per slot (registered globally in registerHeroAnimations). */
+  anims: Record<AnimSlot, string>;
+  frameRates: Record<AnimSlot, number>;
+  /** Static pose while gripping the level-end flag pole. */
+  poleGrab: { key: string; frame: number };
+  /** Static pose for the little hop off the pole. */
+  poleHop: { key: string; frame: number };
+}
+
+const animKeys = (id: CharacterId): Record<AnimSlot, string> => ({
+  idle: `${id}-idle`,
+  run: `${id}-run`,
+  jump: `${id}-jump`,
+  fall: `${id}-fall`,
+  land: `${id}-land`,
+  dash: `${id}-dash`,
+  runjump: `${id}-runjump`,
+});
+
+const lumioSheets: Record<AnimSlot, SheetDef> = {
+  idle: { key: "hero_idle", url: lumioIdleUrl, frames: 7 },
+  run: { key: "hero_run", url: lumioRunUrl, frames: 12 },
+  jump: { key: "hero_jump", url: lumioJumpUrl, frames: 13 },
+  fall: { key: "hero_fall", url: lumioFallUrl, frames: 9 },
+  land: { key: "hero_land", url: lumioLandUrl, frames: 8 },
+  dash: { key: "hero_dash", url: lumioDashUrl, frames: 5 },
+  runjump: { key: "hero_runjump", url: lumioRunJumpUrl, frames: 7 },
+};
+
+const foxRunSheet: SheetDef = { key: "fox_run", url: foxRunUrl, frames: 6 };
+const foxSheets: Record<AnimSlot, SheetDef> = {
+  idle: { key: "fox_idle", url: foxIdleUrl, frames: 4 },
+  run: foxRunSheet,
+  jump: { key: "fox_jump", url: foxJumpUrl, frames: 1 },
+  fall: { key: "fox_fall", url: foxFallUrl, frames: 1 },
+  land: { key: "fox_land", url: foxLandUrl, frames: 2 },
+  dash: foxRunSheet, // no dedicated dash art — the run cycle at a higher rate
+  runjump: { key: "fox_runjump", url: foxRunJumpUrl, frames: 2 },
+};
+
+export const CHARACTERS: Record<CharacterId, CharacterDef> = {
+  lumio: {
+    id: "lumio",
+    name: "Lumio",
+    tagline: "Der strahlende Held der ersten Stunde.",
+    price: 0,
+    pixelArt: false,
+    portrait: { key: "hero_portrait", url: lumioPortraitUrl },
+    sheets: lumioSheets,
+    extraSheets: [],
+    anims: animKeys("lumio"),
+    frameRates: { idle: 8, run: 18, jump: 20, fall: 12, land: 24, dash: 16, runjump: 18 },
+    poleGrab: { key: lumioSheets.jump.key, frame: 4 },
+    poleHop: { key: lumioSheets.jump.key, frame: 6 },
+  },
+  fox: {
+    id: "fox",
+    name: "Foxy",
+    tagline: "Der flinke Fuchs aus dem Sonnenwald.",
+    price: 150,
+    pixelArt: true,
+    portrait: { key: "fox_portrait", url: foxPortraitUrl },
+    sheets: foxSheets,
+    extraSheets: [{ key: "fox_climb", url: foxClimbUrl, frames: 3 }],
+    anims: animKeys("fox"),
+    frameRates: { idle: 6, run: 14, jump: 10, fall: 10, land: 16, dash: 20, runjump: 8 },
+    poleGrab: { key: "fox_climb", frame: 1 },
+    poleHop: { key: "fox_jump", frame: 0 },
+  },
+};
+
+export const CHARACTER_LIST: CharacterDef[] = Object.values(CHARACTERS);
+
+/** Queue every character's sprite sheets + portraits for loading (call in preload). */
+export function loadHeroAssets(scene: Phaser.Scene): void {
+  const cfg = { frameWidth: HERO_FRAME, frameHeight: HERO_FRAME };
+  const queued = new Set<string>();
+  for (const char of CHARACTER_LIST) {
+    for (const s of [...Object.values(char.sheets), ...char.extraSheets]) {
+      if (queued.has(s.key)) continue; // slots may share a sheet (fox dash=run)
+      queued.add(s.key);
+      scene.load.spritesheet(s.key, s.url, cfg);
+    }
+    scene.load.image(char.portrait.key, char.portrait.url);
+  }
+}
+
+/** Register every character's animations (global; call once after loading). */
 export function registerHeroAnimations(scene: Phaser.Scene): void {
-  const def = (
-    key: string,
-    sheet: { key: string; frames: number },
-    frameRate: number,
-    repeat: number
-  ) => {
-    if (scene.anims.exists(key)) return;
-    scene.anims.create({
-      key,
-      frames: scene.anims.generateFrameNumbers(sheet.key, {
-        start: 0,
-        end: sheet.frames - 1,
-      }),
-      frameRate,
-      repeat,
-    });
-  };
-  def(HeroAnim.idle, HeroSheet.idle, 8, -1);
-  def(HeroAnim.run, HeroSheet.run, 18, -1);
-  def(HeroAnim.dash, HeroSheet.dash, 16, -1);
-  def(HeroAnim.fall, HeroSheet.fall, 12, -1);
-  def(HeroAnim.jump, HeroSheet.jump, 20, 0); // play once, hold last frame
-  def(HeroAnim.runjump, HeroSheet.runjump, 18, 0);
-  def(HeroAnim.land, HeroSheet.land, 24, 0);
+  for (const char of CHARACTER_LIST) {
+    // Pixel-art characters keep hard pixels when scaled (no bilinear smear).
+    if (char.pixelArt) {
+      for (const s of [...Object.values(char.sheets), ...char.extraSheets]) {
+        scene.textures.get(s.key).setFilter(Phaser.Textures.FilterMode.NEAREST);
+      }
+    }
+    for (const slot of Object.keys(char.anims) as AnimSlot[]) {
+      const key = char.anims[slot];
+      if (scene.anims.exists(key)) continue;
+      // jump / runjump / land play once and hold; the rest loop.
+      const repeat = slot === "jump" || slot === "runjump" || slot === "land" ? 0 : -1;
+      scene.anims.create({
+        key,
+        frames: scene.anims.generateFrameNumbers(char.sheets[slot].key, {
+          start: 0,
+          end: char.sheets[slot].frames - 1,
+        }),
+        frameRate: char.frameRates[slot],
+        repeat,
+      });
+    }
+  }
 }

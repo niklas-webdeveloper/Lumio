@@ -1,8 +1,9 @@
 import Phaser from "phaser";
 import { Physics } from "@/config/PhysicsConfig";
-import { HeroSheet, HeroAnim, HERO_FRAME } from "@/config/characterAssets";
+import { CHARACTERS, HERO_FRAME, type CharacterDef } from "@/config/characterAssets";
 import type { InputState } from "@/systems/InputManager";
 import { audioManager } from "@/systems/AudioManager";
+import { saveState } from "@/systems/SaveState";
 
 /** Move a value toward a target by at most `maxDelta` (framerate-independent). */
 function approach(current: number, target: number, maxDelta: number): number {
@@ -44,7 +45,8 @@ const FEET_FROM_CENTER = Hero.BODY_OY + Hero.BODY_H - HERO_FRAME / 2; // 56
 const LAND_ANIM_MS = 170;
 
 /**
- * The player character (Lumio).
+ * The player character (Lumio or a shop character — same mechanics, different
+ * sheets: all characters share the 128px cell layout and this physics tuning).
  *
  * Implements the full "game feel" spec:
  *  - acceleration/friction horizontal movement (walk vs run)
@@ -58,6 +60,9 @@ const LAND_ANIM_MS = 170;
  */
 export class Player extends Phaser.Physics.Arcade.Sprite {
   public declare body: Phaser.Physics.Arcade.Body;
+
+  /** Sheets + animation keys of the character being played this run. */
+  private readonly char: CharacterDef;
 
   /** 1 = facing right, -1 = facing left. */
   private facing: 1 | -1 = 1;
@@ -98,7 +103,9 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   private groundPoundCharge = 0;
 
   constructor(scene: Phaser.Scene, x: number, y: number) {
-    super(scene, x, y, HeroSheet.idle.key, 0);
+    const char = CHARACTERS[saveState.getSelectedCharacter()];
+    super(scene, x, y, char.sheets.idle.key, 0);
+    this.char = char;
 
     scene.add.existing(this);
     scene.physics.add.existing(this);
@@ -106,7 +113,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.setOrigin(0.5, 0.5);
     this.setCollideWorldBounds(true);
     this.setSizeState("small");
-    this.anims.play(HeroAnim.idle);
+    this.anims.play(this.char.anims.idle);
     // Terminal velocity cap (vertical). Horizontal is bounded by RUN_SPEED via
     // the manual integration below.
     this.body.setMaxVelocity(Physics.RUN_SPEED, Physics.MAX_FALL_SPEED);
@@ -223,7 +230,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.setGravityY(0);
     // Allow the slam to exceed normal terminal velocity for a weighty drop.
     this.body.setMaxVelocity(Physics.RUN_SPEED, Physics.GROUND_POUND_SPEED);
-    this.anims.play(HeroAnim.fall, true);
+    this.anims.play(this.char.anims.fall, true);
     this.startSpin(); // reuse the double-jump flip as the wind-up
     audioManager.play("jump");
   }
@@ -244,7 +251,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       this.setVelocityX(0);
       this.setVelocityY(Physics.GROUND_POUND_SPEED);
       this.setGravityY(0);
-      this.anims.play(HeroAnim.fall, true);
+      this.anims.play(this.char.anims.fall, true);
     }
   }
 
@@ -257,7 +264,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.setVelocityY(0);
     this.landingUntil = this.scene.time.now + LAND_ANIM_MS;
     this.wasGrounded = true;
-    this.anims.play(HeroAnim.land, true);
+    this.anims.play(this.char.anims.land, true);
     audioManager.play("stomp");
     this.scene.events.emit("player-groundpound-land", this.x, this.body.bottom);
   }
@@ -271,7 +278,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     // Touchdown -> play the one-shot landing animation briefly.
     if (grounded && !this.wasGrounded) {
       this.landingUntil = now + LAND_ANIM_MS;
-      this.anims.play(HeroAnim.land, true);
+      this.anims.play(this.char.anims.land, true);
     }
     this.wasGrounded = grounded;
 
@@ -279,9 +286,9 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       if (vy < -20) {
         // Rising: a running jump when carrying speed, else a normal jump.
         const fast = Math.abs(vx) > Physics.WALK_SPEED * 0.6;
-        this.anims.play(fast ? HeroAnim.runjump : HeroAnim.jump, true);
+        this.anims.play(fast ? this.char.anims.runjump : this.char.anims.jump, true);
       } else {
-        this.anims.play(HeroAnim.fall, true);
+        this.anims.play(this.char.anims.fall, true);
       }
       this.anims.timeScale = 1;
       return;
@@ -290,10 +297,10 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     // Crouched: a slow shuffle when moving, otherwise the (squashed) idle pose.
     if (this.ducking) {
       if (Math.abs(vx) > 8) {
-        this.anims.play(HeroAnim.run, true);
+        this.anims.play(this.char.anims.run, true);
         this.anims.timeScale = 0.7;
       } else {
-        this.anims.play(HeroAnim.idle, true);
+        this.anims.play(this.char.anims.idle, true);
         this.anims.timeScale = 1;
       }
       return;
@@ -304,14 +311,14 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 
     if (Math.abs(vx) > 8) {
       const sprinting = input.run && Math.abs(vx) > Physics.WALK_SPEED * 1.05;
-      this.anims.play(sprinting ? HeroAnim.dash : HeroAnim.run, true);
+      this.anims.play(sprinting ? this.char.anims.dash : this.char.anims.run, true);
       this.anims.timeScale = Phaser.Math.Clamp(
         Math.abs(vx) / Physics.WALK_SPEED,
         0.8,
         1.6
       );
     } else {
-      this.anims.play(HeroAnim.idle, true);
+      this.anims.play(this.char.anims.idle, true);
       this.anims.timeScale = 1;
     }
   }
@@ -545,7 +552,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.body.setMaxVelocity(Physics.RUN_SPEED, Physics.MAX_FALL_SPEED);
     this.setAlpha(1);
     this.endSpin();
-    this.anims.play(HeroAnim.fall, true); // tumble during the death arc
+    this.anims.play(this.char.anims.fall, true); // tumble during the death arc
     this.setTint(0xff7a8a); // brief "hurt" flush
     this.body.setVelocity(0, -380); // hop up...
     this.setGravityY(Physics.GRAVITY_Y);
@@ -572,8 +579,8 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.body.checkCollision.none = true;
     this.setFlipX(facePole === -1);
     this.anims.stop();
-    // Arms-raised frame from the jump sheet reads as gripping the pole.
-    this.setTexture(HeroSheet.jump.key, 4);
+    // A held pose that reads as gripping the pole (per-character frame).
+    this.setTexture(this.char.poleGrab.key, this.char.poleGrab.frame);
   }
 
   /** Pose for the little hop off the pole at the bottom of the slide. */
@@ -581,13 +588,13 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.facing = direction;
     this.setFlipX(direction === -1);
     this.anims.stop();
-    this.setTexture(HeroSheet.jump.key, 6);
+    this.setTexture(this.char.poleHop.key, this.char.poleHop.frame);
   }
 
   /** Touchdown after the hop: landing animation settling into idle. */
   public poseLandCelebrate(): void {
-    this.anims.play(HeroAnim.land, true);
-    this.anims.chain(HeroAnim.idle);
+    this.anims.play(this.char.anims.land, true);
+    this.anims.chain(this.char.anims.idle);
   }
 
   /** Bounce the player upward (used after stomping an enemy in Milestone 5). */
