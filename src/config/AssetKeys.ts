@@ -32,6 +32,9 @@ export const TextureKeys = {
   UsedBlock: "tex_used", // spent "?" block
   Coin: "tex_coin", // collectible coin
   Growcap: "tex_growcap", // grow power-up
+  Gem: "tex_gem", // star-power item (5s invincibility, use on demand)
+  ItemFire: "tex_item_fire", // fire-burst item pickup (use on demand)
+  Fireball: "tex_fireball", // mini fireball projectile
   // Enemies & obstacles
   Plodder: "tex_plodder", // walking enemy
   Vulture: "tex_vulture", // desert flyer, sine-wave patrol

@@ -61,8 +61,9 @@ interface TiledLevelData {
 const coinCountCache = new Map<string, number>();
 
 /**
- * Total collectible coins in a level: coin spawns plus every Lucky Block whose
- * reward is a coin (missing `reward` defaults to "coin", matching GameScene).
+ * Total collectible coins in a level: fixed coin spawns only. "?" blocks roll
+ * a random reward now, so their coins are a bonus and no longer part of the
+ * "all coins" star goal (this lowered every level's requirement by 2).
  * Used by the level select to show "collected / total" without loading the map.
  */
 export function countLevelCoins(level: LevelDef): number {
@@ -75,12 +76,7 @@ export function countLevelCoins(level: LevelDef): number {
     if (layer.type !== "objectgroup") continue;
     for (const obj of layer.objects ?? []) {
       const type = (obj.type || obj.class || "").toLowerCase();
-      if (type === "coin") {
-        total += 1;
-      } else if (type === "luckyblock") {
-        const reward = obj.properties?.find((p) => p.name === "reward")?.value;
-        if ((reward ?? "coin") === "coin") total += 1;
-      }
+      if (type === "coin") total += 1;
     }
   }
   coinCountCache.set(level.key, total);

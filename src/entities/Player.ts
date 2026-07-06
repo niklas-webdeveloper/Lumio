@@ -82,6 +82,8 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   private size: PlayerSizeState = "small";
   /** Remaining invulnerability time (ms); >0 means hits are ignored. */
   private invulnTimer = 0;
+  /** Remaining star-power time (ms); >0 means invincible + enemies die on touch. */
+  private starTimer = 0;
   /** Accumulator driving the blink while invulnerable. */
   private blinkAccumulator = 0;
   /** Set once the player has died; control is suspended. */
@@ -145,12 +147,14 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       if (this.inQuicksand) this.endGroundPound();
       else this.updateGroundPound(deltaMs, grounded);
       this.updateInvulnerability(deltaMs);
+      this.updateStarPower(deltaMs);
       return;
     }
     // A fresh Down-press while airborne starts a slam (Mario-style pound).
     if (!grounded && !this.inQuicksand && input.downJustPressed) {
       this.startGroundPound();
       this.updateInvulnerability(deltaMs);
+      this.updateStarPower(deltaMs);
       return;
     }
 
@@ -161,6 +165,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.updateGravity();
     this.applyQuicksandSink();
     this.updateInvulnerability(deltaMs);
+    this.updateStarPower(deltaMs);
     this.updateAnimation(grounded || wading, input);
   }
 
@@ -336,6 +341,33 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       this.invulnTimer = 0;
       this.setAlpha(1);
     }
+  }
+
+  /** Activate star power: invincible for `durationMs`, enemies die on touch. */
+  public activateStar(durationMs: number): void {
+    if (this.dead) return;
+    this.starTimer = durationMs;
+  }
+
+  /** Tick star power and cycle a rainbow tint while it's active. */
+  private updateStarPower(deltaMs: number): void {
+    if (this.starTimer <= 0) return;
+    this.starTimer -= deltaMs;
+    if (this.starTimer <= 0) {
+      this.starTimer = 0;
+      this.clearTint();
+      return;
+    }
+    // Rainbow shimmer; flicker faster in the last second as a running-out cue.
+    const speed = this.starTimer < 1000 ? 0.9 : 0.35;
+    const hue = (this.scene.time.now * speed) % 360;
+    const c = Phaser.Display.Color.HSVToRGB(hue / 360, 0.55, 1) as Phaser.Display.Color;
+    this.setTint(c.color);
+  }
+
+  /** True while star power (5s on-demand invincibility) is active. */
+  public get isStarPowered(): boolean {
+    return this.starTimer > 0;
   }
 
   /** Acceleration / friction horizontal movement with crisp turn-arounds. */
@@ -522,7 +554,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
    */
   public takeDamage(): DamageResult {
     if (this.dead) return "died";
-    if (this.invulnTimer > 0) return "invulnerable";
+    if (this.invulnTimer > 0 || this.starTimer > 0) return "invulnerable";
 
     if (this.size === "big") {
       this.standUp(); // resize from a clean standing pose
@@ -547,6 +579,8 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   public die(): void {
     if (this.dead) return;
     this.dead = true;
+    this.starTimer = 0;
+    this.clearTint();
     this.groundPounding = false;
     this.standUp();
     this.body.setMaxVelocity(Physics.RUN_SPEED, Physics.MAX_FALL_SPEED);
@@ -572,6 +606,8 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.endSpin();
     this.standUp();
     this.invulnTimer = 0;
+    this.starTimer = 0;
+    this.clearTint();
     this.setAlpha(1);
     this.body.setVelocity(0, 0);
     this.body.setAllowGravity(false);

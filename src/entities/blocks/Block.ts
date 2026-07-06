@@ -2,7 +2,15 @@ import Phaser from "phaser";
 import type { Player } from "@/entities/Player";
 
 /** Reward a Lucky Block can yield. */
-export type RewardKind = "coin" | "growcap";
+export type RewardKind = "coin" | "growcap" | "fireburst" | "star";
+
+/** The random pool every "?" block draws from (uniform pick per hit). */
+export const REWARD_POOL: readonly RewardKind[] = [
+  "coin",
+  "growcap",
+  "fireburst",
+  "star",
+];
 
 /** Scene events emitted by blocks, handled by GameScene. */
 export const BlockEvents = {

@@ -6,6 +6,8 @@ import { Player } from "@/entities/Player";
 import { Coin } from "@/entities/Coin";
 import { Pipe } from "@/entities/Pipe";
 import { Growcap } from "@/entities/powerups/Growcap";
+import { ItemPickup } from "@/entities/powerups/ItemPickup";
+import { Fireball } from "@/entities/Fireball";
 import { Enemy } from "@/entities/enemies/Enemy";
 import { Plodder } from "@/entities/enemies/Plodder";
 import { Snapvine } from "@/entities/enemies/Snapvine";
@@ -19,7 +21,6 @@ import {
   BlockEvents,
   type LuckyRewardPayload,
   type BrickBreakPayload,
-  type RewardKind,
 } from "@/entities/blocks/Block";
 import { InputManager } from "@/systems/InputManager";
 import { RENDER_SCALE, CANVAS_WIDTH, CANVAS_HEIGHT } from "@/config/GameConfig";
@@ -52,6 +53,12 @@ const Depth = {
 const DEATH_DELAY = 900;
 const COMPLETE_DELAY = 700;
 
+/** Star item: on-demand invincibility duration (ms). */
+const STAR_DURATION_MS = 5000;
+/** Fire-burst item: number of mini fireballs per use and gap between shots. */
+const FIREBURST_SHOTS = 5;
+const FIREBURST_GAP_MS = 90;
+
 /**
  * GameScene: core gameplay. Loads the level for the current gameState.levelIndex,
  * runs the HUD (UIScene) in parallel, and owns the run-loop concerns: scoring,
@@ -67,6 +74,8 @@ export class GameScene extends Phaser.Scene {
   private coins!: Phaser.GameObjects.Group;
   private blocks!: Phaser.GameObjects.Group;
   private growcaps!: Phaser.GameObjects.Group;
+  private itemPickups!: Phaser.GameObjects.Group;
+  private fireballs!: Phaser.GameObjects.Group;
   private enemies!: Phaser.GameObjects.Group;
   private plodders!: Phaser.GameObjects.Group;
   private icicles!: Phaser.GameObjects.Group;
@@ -108,6 +117,8 @@ export class GameScene extends Phaser.Scene {
     this.coins = this.add.group();
     this.blocks = this.add.group();
     this.growcaps = this.add.group();
+    this.itemPickups = this.add.group();
+    this.fireballs = this.add.group();
     this.enemies = this.add.group();
     this.plodders = this.add.group();
     this.icicles = this.add.group();
@@ -151,6 +162,7 @@ export class GameScene extends Phaser.Scene {
     if (!this.failed && !this.levelComplete) {
       this.updateSurfaceState();
       this.player.updatePlayer(delta, this.inputManager.getState());
+      if (this.inputManager.getState().useItemJustPressed) this.useHeldItem();
 
       const fellOut = this.player.y > this.level.heightPx + 80;
       if (this.player.isDead || fellOut) {
@@ -203,11 +215,11 @@ export class GameScene extends Phaser.Scene {
           break;
         }
         case "luckyblock": {
-          const reward = (obj.properties.reward as RewardKind) ?? "coin";
-          const block = new LuckyBlock(this, obj.x, obj.y, reward);
+          // Rewards are random now, so block coins are a bonus and no longer
+          // count toward the "all coins" star goal.
+          const block = new LuckyBlock(this, obj.x, obj.y);
           block.setDepth(Depth.block);
           this.blocks.add(block);
-          if (reward === "coin") coinTotal += 1;
           break;
         }
         case "brick": {
@@ -327,6 +339,31 @@ export class GameScene extends Phaser.Scene {
       audioManager.play("powerup");
       cap.applyTo(this.player);
     });
+    // Special items go into the Mario-Kart-style slot instead of acting now.
+    this.physics.add.overlap(this.player, this.itemPickups, (_p, i) => {
+      const item = i as ItemPickup;
+      if (!item.collect()) return;
+      gameState.heldItem = item.kind;
+      this.particles.powerupSparkle(item.x, item.y);
+      audioManager.play("powerup");
+    });
+    // Fireballs: die on solid geometry, kill enemies on contact.
+    this.physics.add.collider(this.fireballs, this.level.terrain, (f) =>
+      (f as Fireball).explode()
+    );
+    this.physics.add.collider(this.fireballs, this.blocks, (f) =>
+      (f as Fireball).explode()
+    );
+    this.physics.add.collider(this.fireballs, this.pipes, (f) =>
+      (f as Fireball).explode()
+    );
+    this.physics.add.overlap(this.fireballs, this.enemies, (f, e) => {
+      const ball = f as Fireball;
+      const enemy = e as Enemy;
+      if (ball.isDone || enemy.isDying) return;
+      ball.explode();
+      this.killEnemy(enemy);
+    });
     this.physics.add.overlap(this.player, this.enemies, (_p, e) =>
       this.onPlayerHitEnemy(e as Enemy)
     );
@@ -345,8 +382,54 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  /** Defeat an enemy outright (fireball hit or star-power touch). */
+  private killEnemy(enemy: Enemy): void {
+    enemy.stomp(); // reuse the squash-and-fade defeat
+    gameState.addScore(Progression.STOMP_SCORE);
+    this.particles.stompPuff(enemy.x, enemy.body.bottom);
+    audioManager.play("stomp");
+  }
+
+  /** Fire the stashed item (E/X or the mobile item button). */
+  private useHeldItem(): void {
+    const item = gameState.heldItem;
+    if (!item) return;
+    gameState.heldItem = null;
+
+    if (item === "star") {
+      this.player.activateStar(STAR_DURATION_MS);
+      this.particles.powerupSparkle(this.player.x, this.player.y);
+      audioManager.play("powerup");
+      return;
+    }
+
+    // Fire burst: a quick volley of mini fireballs in the facing direction.
+    for (let i = 0; i < FIREBURST_SHOTS; i++) {
+      this.time.delayedCall(i * FIREBURST_GAP_MS, () => {
+        if (this.failed || this.levelComplete || this.player.isDead) return;
+        const dir = this.player.facingDirection;
+        // Spawn at torso height so the volley hits ground critters too.
+        const ball = new Fireball(
+          this,
+          this.player.x + dir * 18,
+          this.player.y + 4,
+          dir
+        );
+        ball.setDepth(Depth.player);
+        this.fireballs.add(ball);
+        audioManager.play("doublejump");
+      });
+    }
+  }
+
   private onPlayerHitEnemy(enemy: Enemy): void {
     if (this.failed || this.levelComplete || !enemy.canDamage()) return;
+
+    // Star power: touching an enemy defeats it, no matter the angle.
+    if (this.player.isStarPowered && enemy.stompable) {
+      this.killEnemy(enemy);
+      return;
+    }
 
     const pb = this.player.body;
     const eb = enemy.body;
@@ -398,19 +481,32 @@ export class GameScene extends Phaser.Scene {
 
   private onLuckyReward(payload: LuckyRewardPayload): void {
     const popY = payload.y - 16;
-    if (payload.reward === "growcap") {
-      const cap = new Growcap(this, payload.x, popY);
-      cap.setDepth(Depth.item);
-      this.growcaps.add(cap);
-    } else {
-      this.spawnCoinPop(payload.x, popY);
-      this.collectCoin(payload.x, popY);
+    switch (payload.reward) {
+      case "growcap": {
+        // The cherry works exactly as before: roams, grows on touch.
+        const cap = new Growcap(this, payload.x, popY);
+        cap.setDepth(Depth.item);
+        this.growcaps.add(cap);
+        break;
+      }
+      case "fireburst":
+      case "star": {
+        const item = new ItemPickup(this, payload.x, popY, payload.reward);
+        item.setDepth(Depth.item);
+        this.itemPickups.add(item);
+        break;
+      }
+      default:
+        // Bonus coin — pays out, but doesn't count toward the star goal.
+        this.spawnCoinPop(payload.x, popY);
+        this.collectCoin(payload.x, popY, false);
+        break;
     }
   }
 
   /** Award a coin with sparkle + sound, voicing a fanfare on a bonus life. */
-  private collectCoin(x: number, y: number): void {
-    const { extraLife } = gameState.addCoin();
+  private collectCoin(x: number, y: number, countsTowardGoal = true): void {
+    const { extraLife } = gameState.addCoin(countsTowardGoal);
     saveState.addTotalCoins(1); // account balance for the character shop
     this.particles.coinSparkle(x, y);
     ui.flyCoinToHud(this.worldToViewport(x, y));

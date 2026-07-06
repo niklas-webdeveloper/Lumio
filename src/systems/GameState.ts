@@ -21,6 +21,9 @@ export const Progression = {
  */
 export type GameMode = "levels" | "marathon";
 
+/** Stashable special item held in the Mario-Kart-style item slot. */
+export type HeldItem = "fireburst" | "star" | null;
+
 class GameState {
   mode: GameMode = "levels";
   lives: number = Progression.START_LIVES;
@@ -39,6 +42,8 @@ class GameState {
   levelCoins = 0;
   /** Total collectible coins in the current level (set by GameScene on load). */
   levelCoinTotal = 0;
+  /** Special item in the slot, usable on demand (Mario-Kart style). */
+  heldItem: HeldItem = null;
 
   /** Begin a brand-new game, optionally continuing from a level index. */
   startNewGame(levelIndex = 0, mode: GameMode = "levels"): void {
@@ -53,6 +58,7 @@ class GameState {
     this.runCoins = 0;
     this.levelCoins = 0;
     this.levelCoinTotal = 0;
+    this.heldItem = null;
   }
 
   get isMarathon(): boolean {
@@ -63,12 +69,17 @@ class GameState {
   startLevelTimer(): void {
     this.timeElapsed = 0;
     this.levelCoins = 0;
+    this.heldItem = null;
   }
 
-  /** Collect a coin: adds score and grants a life every 100 coins. */
-  addCoin(): { extraLife: boolean } {
+  /**
+   * Collect a coin: adds score and grants a life every 100 coins.
+   * Coins from random "?" blocks pass `countsTowardGoal: false` — they are a
+   * bonus and no longer part of the level's "all coins" star goal.
+   */
+  addCoin(countsTowardGoal = true): { extraLife: boolean } {
     this.coins += 1;
-    this.levelCoins += 1;
+    if (countsTowardGoal) this.levelCoins += 1;
     this.runCoins += 1;
     this.score += Progression.COIN_SCORE;
     if (this.coins >= Progression.COINS_PER_LIFE) {

@@ -25,6 +25,13 @@ export const WorldSheet = {
     frameHeight: 16,
     frames: 7,
   },
+  gem: {
+    key: TextureKeys.Gem,
+    url: "assets/sprites/gem.png",
+    frameWidth: 15,
+    frameHeight: 13,
+    frames: 5,
+  },
   plodder: {
     key: TextureKeys.Plodder,
     url: "assets/sprites/plodder.png",
@@ -66,6 +73,7 @@ export const WorldSheet = {
 export const WorldAnim = {
   coinSpin: "coin-spin",
   growcapIdle: "growcap-idle",
+  gemSpin: "gem-spin",
   plodderWalk: "plodder-walk",
   snapvineIdle: "snapvine-idle",
   vultureFly: "vulture-fly",
@@ -134,6 +142,7 @@ export function setupWorldArt(scene: Phaser.Scene): void {
   };
   loop(WorldAnim.coinSpin, WorldSheet.coin, 9);
   loop(WorldAnim.growcapIdle, WorldSheet.growcap, 10);
+  loop(WorldAnim.gemSpin, WorldSheet.gem, 8);
   loop(WorldAnim.plodderWalk, WorldSheet.plodder, 10);
   loop(WorldAnim.snapvineIdle, WorldSheet.snapvine, 8);
   loop(WorldAnim.vultureFly, WorldSheet.vulture, 8);

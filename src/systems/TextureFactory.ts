@@ -370,6 +370,45 @@ function createGrowcap(scene: Phaser.Scene): void {
   g.destroy();
 }
 
+/** The fire-burst item pickup: a glowing ember orb with a flame lick on top. */
+function createItemFire(scene: Phaser.Scene): void {
+  if (scene.textures.exists(TextureKeys.ItemFire)) return;
+  const w = 22;
+  const h = 24;
+  const g = scene.make.graphics({ x: 0, y: 0 }, false);
+  // flame lick
+  g.fillStyle(0xff8a2a, 1);
+  g.fillTriangle(11, 0, 6, 10, 16, 10);
+  g.fillStyle(0xffc23a, 1);
+  g.fillTriangle(11, 3, 8, 10, 14, 10);
+  // ember orb
+  g.fillStyle(0xc23a10, 1); // dark rim
+  g.fillCircle(11, 15, 9);
+  g.fillStyle(0xf05a1e, 1); // body
+  g.fillCircle(11, 15, 7.5);
+  g.fillStyle(0xffa63a, 1); // inner glow
+  g.fillCircle(11, 15, 5);
+  g.fillStyle(0xffe08a, 1); // hot core
+  g.fillCircle(10, 13, 2.6);
+  g.generateTexture(TextureKeys.ItemFire, w, h);
+  g.destroy();
+}
+
+/** The mini fireball projectile: a small blazing orb. */
+function createFireball(scene: Phaser.Scene): void {
+  if (scene.textures.exists(TextureKeys.Fireball)) return;
+  const s = 12;
+  const g = scene.make.graphics({ x: 0, y: 0 }, false);
+  g.fillStyle(0xd8420f, 1);
+  g.fillCircle(s / 2, s / 2, 5.5);
+  g.fillStyle(0xff7a1e, 1);
+  g.fillCircle(s / 2, s / 2, 4.2);
+  g.fillStyle(0xffd24a, 1);
+  g.fillCircle(s / 2 - 1, s / 2 - 1, 2.2);
+  g.generateTexture(TextureKeys.Fireball, s, s);
+  g.destroy();
+}
+
 /** Plodder: a small, grumpy walking critter. */
 function createPlodder(scene: Phaser.Scene): void {
   if (scene.textures.exists(TextureKeys.Plodder)) return;
@@ -699,6 +738,8 @@ export function createWorldTextures(scene: Phaser.Scene): void {
   createBeacon(scene);
   createCoin(scene);
   createGrowcap(scene);
+  createItemFire(scene);
+  createFireball(scene);
   createEntityBlocks(scene);
   createPlodder(scene);
   createSnapvine(scene);

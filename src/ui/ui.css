@@ -1059,6 +1059,22 @@
   height: 10vmin;
 }
 
+/* Item button (Mario-Kart-style slot): smaller, dimmed while empty. */
+.touch-btn.touch-item {
+  width: 16vmin;
+  height: 16vmin;
+  font-size: 8vmin;
+  line-height: 1;
+  align-self: center;
+  opacity: 0.45;
+}
+
+.touch-btn.touch-item.has-item {
+  opacity: 1;
+  border-color: rgba(244, 195, 63, 0.9);
+  background: radial-gradient(circle, rgba(244, 195, 63, 0.5) 0%, rgba(44, 119, 148, 0.7) 100%);
+}
+
 /* ===========================================================================
    Portrait Orientation Lock Screen CSS
    =========================================================================== */

@@ -158,6 +158,7 @@ class UIManager {
 
   private touchControlsEnabled = false;
   private touchToggleBtns: HTMLButtonElement[] = [];
+  private touchItemBtn: HTMLButtonElement | null = null;
 
   private splash: HTMLElement | null = null;
   private splashFill: HTMLElement | null = null;
@@ -176,6 +177,7 @@ class UIManager {
       right: false,
       jump: false,
       down: false,
+      useItem: false,
     };
 
     // Load initial touch enabled status
@@ -299,7 +301,13 @@ class UIManager {
       </svg>
     `;
 
-    rightGroup.append(btnDown, btnJump);
+    // Mario-Kart-style item button: shows the stashed item, fires it on tap.
+    const btnItem = el("button", "touch-btn touch-item");
+    btnItem.id = "btn-touch-item";
+    btnItem.textContent = "◇";
+    this.touchItemBtn = btnItem;
+
+    rightGroup.append(btnItem, btnDown, btnJump);
     container.append(leftGroup, rightGroup);
 
     // Append to this.root (which is inside #ui-root) so the .hidden CSS styling is correctly applied
@@ -307,7 +315,7 @@ class UIManager {
 
     const bindEvents = (
       btn: HTMLElement,
-      stateKey: "left" | "right" | "jump" | "down"
+      stateKey: "left" | "right" | "jump" | "down" | "useItem"
     ) => {
       const start = (e: Event) => {
         e.preventDefault();
@@ -341,6 +349,7 @@ class UIManager {
     bindEvents(btnRight, "right");
     bindEvents(btnDown, "down");
     bindEvents(btnJump, "jump");
+    bindEvents(btnItem, "useItem");
   }
 
   private touchToggleButton(): HTMLButtonElement {
@@ -996,10 +1005,14 @@ class UIManager {
     coins.innerHTML = `<span class="ico" id="hud-coin-ico">${this.icoTag("coin")}</span><div class="bar"><i id="hud-coinbar"></i></div><span class="val" id="hud-coins">0</span>`;
     const lives = el("div", "chip");
     lives.innerHTML = `<span class="ico">${this.icoTag("heart")}</span><span class="val" id="hud-lives">3</span>`;
+    // Item slot: the stashed "?" block special item, used with E/X or the
+    // on-screen item button.
+    const item = el("div", "chip item-slot");
+    item.innerHTML = `<span class="lbl">Item</span> <span class="val" id="hud-item">–</span>`;
     // Account balance (the shop currency) — updates live as coins are collected.
     const total = el("div", "chip total-coins");
     total.innerHTML = `<span class="ico">${this.icoTag("coin")}</span><span class="lbl">Gesamt</span> <span class="val" id="hud-total">0</span>`;
-    left.append(score, coins, lives, total);
+    left.append(score, coins, lives, item, total);
 
     const right = el("div", "hud-cluster");
     const level = el("div", "chip");
@@ -1022,6 +1035,7 @@ class UIManager {
       coinbar: hud.querySelector("#hud-coinbar") as HTMLElement,
       lives: hud.querySelector("#hud-lives") as HTMLElement,
       total: hud.querySelector("#hud-total") as HTMLElement,
+      item: hud.querySelector("#hud-item") as HTMLElement,
       level: hud.querySelector("#hud-level") as HTMLElement,
       time: hud.querySelector("#hud-time") as HTMLElement,
     };
@@ -1051,6 +1065,16 @@ class UIManager {
     }
     this.setHudText("lives", `${Math.max(0, gameState.lives)}`);
     this.setHudText("total", `${saveState.getTotalCoins()}`);
+    // Item slot + the mobile item button mirror the stashed special item.
+    const itemIcon =
+      gameState.heldItem === "fireburst" ? "🔥" : gameState.heldItem === "star" ? "💎" : "–";
+    if (this.hudCache.item !== itemIcon) {
+      this.setHudText("item", itemIcon);
+      if (this.touchItemBtn) {
+        this.touchItemBtn.textContent = itemIcon === "–" ? "◇" : itemIcon;
+        this.touchItemBtn.classList.toggle("has-item", itemIcon !== "–");
+      }
+    }
     // Marathon: show the run progress and the total run clock (it keeps
     // counting across levels and failed attempts — that's the leaderboard time).
     if (gameState.isMarathon) {
