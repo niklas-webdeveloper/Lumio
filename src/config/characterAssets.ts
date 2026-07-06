@@ -100,7 +100,9 @@ const foxSheets: Record<AnimSlot, SheetDef> = {
   runjump: { key: "fox_runjump", url: foxRunJumpUrl, frames: 2 },
 };
 
-const jinwooRunSheet: SheetDef = { key: "jinwoo_run", url: jinwooRunUrl, frames: 8 };
+// 7 frames: the source row's leaping first frame is excluded by the build
+// script so the grounded run cycle stays at a constant height.
+const jinwooRunSheet: SheetDef = { key: "jinwoo_run", url: jinwooRunUrl, frames: 7 };
 const jinwooSheets: Record<AnimSlot, SheetDef> = {
   idle: { key: "jinwoo_idle", url: jinwooIdleUrl, frames: 5 },
   run: jinwooRunSheet,

@@ -473,8 +473,24 @@
   flex-wrap: wrap;
   justify-content: center;
 }
-.shop-panel {
+/* The shop panel sizes to its card row (all characters side by side) instead
+   of the fixed .panel.wide width, which forced a lopsided 2+1 card wrap and
+   made the panel taller than the screen (title + ZURÜCK clipped, no scroll). */
+.panel.wide.shop-panel {
+  width: auto !important;
+  max-width: 95vw;
   gap: 2.2vmin;
+  padding: 6vmin 5vmin 4vmin;
+  min-height: 0;
+}
+/* Fallback for viewports the panel still can't fit in: let the overlay
+   scroll; margin:auto keeps the panel centered yet fully reachable. */
+#shop-overlay {
+  overflow-y: auto;
+}
+#shop-overlay .panel {
+  margin: auto;
+  flex-shrink: 0;
 }
 .shop-balance {
   display: inline-flex;

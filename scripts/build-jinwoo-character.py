@@ -147,7 +147,10 @@ def main() -> None:
     rows = extract()
 
     build_sheet("idle", rows["stand"])
-    build_sheet("run", rows["run"])
+    # Run 0 is a leaping lunge (airborne, ~40% taller than the stride frames,
+    # plus chroma specks under the feet) — including it makes the grounded run
+    # visibly pop upward once per cycle, so the loop uses Run 1-7 only.
+    build_sheet("run", rows["run"][1:])
     build_sheet("jump", rows["jump"][0:2])
     build_sheet("fall", rows["jump"][4:6])
     build_sheet("runjump", rows["jump"][0:4])
