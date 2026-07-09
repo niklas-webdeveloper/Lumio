@@ -14,6 +14,7 @@ import { ShadowSoldier } from "@/entities/enemies/ShadowSoldier";
 import { LavaGolem } from "@/entities/enemies/LavaGolem";
 import { Phoenix } from "@/entities/enemies/Phoenix";
 import { Snapvine } from "@/entities/enemies/Snapvine";
+import { Frog } from "@/entities/enemies/Frog";
 import { Vulture } from "@/entities/enemies/Vulture";
 import { Bat } from "@/entities/enemies/Bat";
 import { Icicle } from "@/entities/enemies/Icicle";
@@ -91,7 +92,13 @@ export class GameScene extends Phaser.Scene {
   private plodders!: Phaser.GameObjects.Group;
   private icicles!: Phaser.GameObjects.Group;
   private pipes!: Phaser.GameObjects.Group;
-  private bgm!: Phaser.Sound.BaseSound;
+  private bgm?: Phaser.Sound.BaseSound;
+  /** Warp pipes (enter with ↓ while standing on the mouth) and their targets. */
+  private warpPipes: Array<{ pipe: Pipe; target: string }> = [];
+  /** Named warp destinations ("warppoint" spawns), e.g. the bonus room. */
+  private warpPoints = new Map<string, Phaser.Math.Vector2>();
+  /** True during the enter-pipe / teleport / emerge sequence. */
+  private warping = false;
   /** Current level's theme — selects themed enemies for generic spawns. */
   private theme!: BgTheme;
   /** Drifting soul-fire / ember motes on the themed stages (follows the view). */
@@ -113,6 +120,9 @@ export class GameScene extends Phaser.Scene {
   create(): void {
     this.failed = false;
     this.levelComplete = false;
+    this.warping = false;
+    this.warpPipes = [];
+    this.warpPoints.clear();
 
     // DOM HUD + level title card (the UI layer owns the HUD).
     ui.onGameSceneCreate();
@@ -171,20 +181,26 @@ export class GameScene extends Phaser.Scene {
 
     this.sound.mute = audioManager.isMuted(); // global mute drives the bgm
     // 0.35 balances the loud mastered tracks against the soft synth menu loop.
-    this.bgm = this.sound.add(level.music, { loop: true, volume: 0.35 });
-    this.bgm.play();
+    // Levels without a soundtrack yet (music: "") simply run silent.
+    if (level.music && this.cache.audio.exists(level.music)) {
+      this.bgm = this.sound.add(level.music, { loop: true, volume: 0.35 });
+      this.bgm.play();
+    } else {
+      this.bgm = undefined;
+    }
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () =>
-      this.bgm.stop()
+      this.bgm?.stop()
     );
   }
 
   override update(_time: number, delta: number): void {
     this.inputManager.update();
 
-    if (!this.failed && !this.levelComplete) {
+    if (!this.failed && !this.levelComplete && !this.warping) {
       this.updateSurfaceState();
       this.player.updatePlayer(delta, this.inputManager.getState());
       if (this.inputManager.getState().useItemJustPressed) this.useHeldItem();
+      if (this.inputManager.getState().downJustPressed) this.tryEnterWarpPipe();
 
       const fellOut = this.player.y > this.level.heightPx + 80;
       if (this.player.isDead || fellOut) {
@@ -192,6 +208,8 @@ export class GameScene extends Phaser.Scene {
       } else {
         gameState.tickTime(delta); // stopwatch — stops on death/completion
       }
+    } else if (this.warping) {
+      gameState.tickTime(delta); // the detour still costs run time
     }
 
     // The parallax realigns on FOLLOW_UPDATE (after the camera settles) — no
@@ -230,20 +248,28 @@ export class GameScene extends Phaser.Scene {
    * frame (see the FOLLOW_UPDATE hook), so the field always fills the screen.
    */
   private startAmbientMotes(theme: BgTheme): void {
-    if (theme !== "shadow" && theme !== "crimson") return;
+    if (theme !== "shadow" && theme !== "crimson" && theme !== "lagoon") return;
     const shadow = theme === "shadow";
+    const lagoon = theme === "lagoon";
     this.ambientMotes = this.add
       .particles(0, 0, TextureKeys.Spark, {
-        lifespan: 4200,
-        speedX: { min: -8, max: 8 },
-        speedY: shadow ? { min: -20, max: -6 } : { min: -30, max: -12 },
-        scale: { min: 0.14, max: 0.5 },
-        alpha: { start: shadow ? 0.5 : 0.65, end: 0 },
-        tint: shadow
-          ? [0x6ad7ff, 0x9a7bff, 0xbfe6ff]
-          : [0xff7a2a, 0xff3a1e, 0xffc24e],
+        lifespan: lagoon ? 5200 : 4200,
+        speedX: lagoon ? { min: -14, max: 14 } : { min: -8, max: 8 },
+        // Lagoon fireflies meander; the other stages' motes drift upward.
+        speedY: lagoon
+          ? { min: -8, max: 8 }
+          : shadow
+            ? { min: -20, max: -6 }
+            : { min: -30, max: -12 },
+        scale: { min: 0.14, max: lagoon ? 0.38 : 0.5 },
+        alpha: { start: lagoon ? 0.55 : shadow ? 0.5 : 0.65, end: 0 },
+        tint: lagoon
+          ? [0xaff77a, 0xfff2a8, 0x7ae8c8]
+          : shadow
+            ? [0x6ad7ff, 0x9a7bff, 0xbfe6ff]
+            : [0xff7a2a, 0xff3a1e, 0xffc24e],
         blendMode: Phaser.BlendModes.ADD,
-        frequency: shadow ? 190 : 150,
+        frequency: lagoon ? 240 : shadow ? 190 : 150,
         quantity: 1,
         emitZone: {
           type: "random" as const,
@@ -316,6 +342,14 @@ export class GameScene extends Phaser.Scene {
           this.enemies.add(bat);
           break;
         }
+        case "frog": {
+          // Lagoon hopper: arcs toward the player instead of pacing.
+          const frog = new Frog(this, obj.x, obj.y, this.player);
+          frog.setDepth(Depth.enemy);
+          this.enemies.add(frog);
+          this.plodders.add(frog); // rides the ground-walker colliders
+          break;
+        }
         case "icicle": {
           const icicle = new Icicle(this, obj.x, obj.y, this.player);
           icicle.setDepth(Depth.enemy);
@@ -338,6 +372,25 @@ export class GameScene extends Phaser.Scene {
           }
           break;
         }
+        case "warppipe": {
+          // A special pipe the player can enter (↓ on the mouth) to warp to a
+          // named "warppoint" — e.g. down into the bonus room and back out.
+          const pipe = new Pipe(this, obj.x, obj.y, pipeKeyFor(this.theme));
+          pipe.setDepth(Depth.pipe);
+          this.pipes.add(pipe);
+          this.warpPipes.push({
+            pipe,
+            target: String(obj.properties.target ?? ""),
+          });
+          this.addWarpSparkle(pipe);
+          break;
+        }
+        case "warppoint":
+          this.warpPoints.set(
+            obj.name,
+            new Phaser.Math.Vector2(obj.x, obj.y)
+          );
+          break;
         case "beacon":
           this.createBeacon(obj.x, obj.y);
           break;
@@ -346,6 +399,76 @@ export class GameScene extends Phaser.Scene {
       }
     }
     gameState.levelCoinTotal = coinTotal;
+  }
+
+  /** A soft golden sparkle over a warp pipe's mouth marks it as enterable. */
+  private addWarpSparkle(pipe: Pipe): void {
+    this.add
+      .particles(pipe.mouthX, pipe.mouthY - 4, TextureKeys.Spark, {
+        lifespan: 900,
+        speedY: { min: -34, max: -14 },
+        speedX: { min: -10, max: 10 },
+        scale: { start: 0.35, end: 0 },
+        alpha: { start: 0.8, end: 0 },
+        tint: [0xffd95e, 0xfff2a8],
+        blendMode: Phaser.BlendModes.ADD,
+        frequency: 130,
+        quantity: 1,
+        emitZone: {
+          type: "random" as const,
+          source: new Phaser.Geom.Rectangle(-22, 0, 44, 4),
+          quantity: 1,
+        },
+      })
+      .setDepth(Depth.pipe + 0.5);
+  }
+
+  /**
+   * ↓ pressed: if the player is standing on a warp pipe's mouth, play the
+   * classic sink-into-the-pipe sequence, fade, teleport to the pipe's named
+   * warppoint (e.g. the bonus room), and fade back in.
+   */
+  private tryEnterWarpPipe(): void {
+    if (!this.player.body.blocked.down) return;
+    for (const { pipe, target } of this.warpPipes) {
+      const onMouth =
+        Math.abs(this.player.x - pipe.mouthX) <= 20 &&
+        Math.abs(this.player.body.bottom - pipe.mouthY) <= 8;
+      if (!onMouth) continue;
+      const dest = this.warpPoints.get(target);
+      if (!dest) continue;
+      this.warpTo(dest);
+      return;
+    }
+  }
+
+  private warpTo(dest: Phaser.Math.Vector2): void {
+    this.warping = true;
+    this.player.setVelocity(0, 0);
+    this.player.body.enable = false; // no physics while inside the pipe
+    this.player.setDepth(Depth.plant); // sink behind the pipe sprite
+    audioManager.play("powerup");
+
+    // Slide down into the pipe, then fade-cut to the destination.
+    this.tweens.add({
+      targets: this.player,
+      y: this.player.y + 44,
+      duration: 380,
+      ease: "Sine.in",
+      onComplete: () => {
+        fadeOutThen(this, () => {
+          this.player.setPosition(dest.x, dest.y);
+          this.player.setDepth(Depth.player);
+          this.player.body.enable = true;
+          this.player.setVelocity(0, 0);
+          // Snap the camera so the fade-in opens on the destination (the
+          // follow-lerp would otherwise pan across the whole level).
+          this.cameras.main.centerOn(dest.x, dest.y);
+          fadeIn(this);
+          this.warping = false;
+        });
+      },
+    });
   }
 
   private createBeacon(x: number, y: number): void {
@@ -630,7 +753,7 @@ export class GameScene extends Phaser.Scene {
     if (this.failed) return;
     this.failed = true;
     if (!this.player.isDead) this.player.die();
-    this.bgm.stop();
+    this.bgm?.stop();
     audioManager.play("death");
 
     this.time.delayedCall(DEATH_DELAY, () => {
@@ -646,7 +769,7 @@ export class GameScene extends Phaser.Scene {
   private onReachBeacon(): void {
     if (this.levelComplete || this.failed) return;
     this.levelComplete = true;
-    this.bgm.stop();
+    this.bgm?.stop();
     audioManager.play("complete");
 
     const levelIndex = gameState.levelIndex;
@@ -806,7 +929,7 @@ export class GameScene extends Phaser.Scene {
 
   /** True if the player asked to pause this frame (P/Esc, handled by the UI). */
   public get canPause(): boolean {
-    return !this.failed && !this.levelComplete;
+    return !this.failed && !this.levelComplete && !this.warping;
   }
 
   /** Dev-only inspection hooks for the headless smoke tests (stripped in prod). */

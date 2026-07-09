@@ -725,6 +725,27 @@ function createParticleTextures(scene: Phaser.Scene): void {
   }
 }
 
+/** Soft white radial glow, tinted per enemy for the themed aura sprites.
+ * A plain batched sprite replaces the old per-enemy preFX glow, which forced
+ * a framebuffer round-trip + multi-tap shader per enemy per frame and made
+ * the themed stages (levels 5/6) stutter. */
+function createAuraGlow(scene: Phaser.Scene): void {
+  if (scene.textures.exists(TextureKeys.AuraGlow)) return;
+  const size = 64;
+  const canvas = scene.textures.createCanvas(TextureKeys.AuraGlow, size, size);
+  if (!canvas) return;
+  const ctx = canvas.getContext();
+  const half = size / 2;
+  const grad = ctx.createRadialGradient(half, half, 0, half, half, half);
+  grad.addColorStop(0, "rgba(255,255,255,0.9)");
+  grad.addColorStop(0.35, "rgba(255,255,255,0.45)");
+  grad.addColorStop(0.7, "rgba(255,255,255,0.14)");
+  grad.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, size, size);
+  canvas.refresh();
+}
+
 /** Generate every world texture. Safe to call once in PreloadScene. */
 export function createWorldTextures(scene: Phaser.Scene): void {
   createTileset(scene);
@@ -745,4 +766,5 @@ export function createWorldTextures(scene: Phaser.Scene): void {
   createSnapvine(scene);
   createPipe(scene);
   createParticleTextures(scene);
+  createAuraGlow(scene);
 }

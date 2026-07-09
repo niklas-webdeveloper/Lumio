@@ -105,6 +105,80 @@ def add_top_crest(tile: Image.Image, glow=(90, 210, 255)) -> Image.Image:
     return t
 
 
+ARCANE_DARK = [(24, 32, 58), (30, 40, 70), (37, 49, 85), (45, 59, 99)]
+
+
+def arcane_body(rng) -> Image.Image:
+    """Seamless 32px arcane-masonry tile: jittered indigo stone blocks with
+    thin dark seams and subtle top-left highlights. Wrap-drawn like the crimson
+    cobbles, so both axes tile without any border line."""
+    t = Image.new("RGBA", (TILE, TILE), (16, 22, 42, 255))
+    d = ImageDraw.Draw(t)
+    step = 8
+    for gy in range(0, TILE, step):
+        for gx in range(0, TILE, step):
+            jx = rng.randint(-1, 1)
+            jy = rng.randint(-1, 1)
+            base = ARCANE_DARK[rng.randint(0, len(ARCANE_DARK) - 1)]
+            for ox in (-TILE, 0, TILE):
+                for oy in (-TILE, 0, TILE):
+                    x0, y0 = gx + jx + ox + 1, gy + jy + oy + 1
+                    x1, y1 = gx + ox + step - 1, gy + oy + step - 1
+                    d.rounded_rectangle([x0, y0, x1, y1], radius=2,
+                                        fill=(*base, 255))
+                    d.line([x0, y0, x1 - 2, y0], fill=lerp(base, (96, 128, 190), .5))
+                    d.line([x0, y0, x0, y1 - 2], fill=lerp(base, (84, 112, 170), .4))
+                    d.line([x0 + 2, y1, x1, y1], fill=(13, 18, 34))
+    a = t.getchannel("A").point(lambda v: 255)
+    t.putalpha(a)
+    return t
+
+
+def shadow_platform(glow, rng_seed, body_boost=1.0, rune_alpha=110) -> Image.Image:
+    """A floating-platform tile that reads as one continuous slab when placed
+    in rows: seamless arcane-masonry body (no vertical border lines), a glowing
+    crest along the top edge and a soft shade fade at the bottom — replacing
+    the old atlas crop whose hard black frame bars made rows look chopped up.
+    """
+    t = arcane_body(random.Random(rng_seed))
+    if body_boost != 1.0:
+        t = Image.eval(t, lambda v: min(255, int(v * body_boost)))
+        a = t.getchannel("A").point(lambda v: 255)
+        t.putalpha(a)
+
+    # Soft bottom shade: a gradient, not a hard bar (keeps the slab grounded).
+    shade = Image.new("RGBA", (TILE, TILE), (0, 0, 0, 0))
+    dsh = ImageDraw.Draw(shade)
+    for i in range(7):
+        y = TILE - 7 + i
+        dsh.rectangle([0, y, TILE, y], fill=(4, 8, 20, 18 + i * 14))
+    t.alpha_composite(shade)
+
+    # Faint centre rune: a small glowing diamond, one per tile — subtle enough
+    # to repeat, bright enough to sell "arcane platform".
+    rune = Image.new("RGBA", (TILE, TILE), (0, 0, 0, 0))
+    dr = ImageDraw.Draw(rune)
+    cx, cy, r = TILE // 2, TILE // 2 + 3, 5
+    dr.polygon([(cx, cy - r), (cx + r, cy), (cx, cy + r), (cx - r, cy)],
+               outline=(*glow, rune_alpha), width=1)
+    dr.point((cx, cy), fill=(*glow, rune_alpha))
+    t.alpha_composite(rune.filter(ImageFilter.GaussianBlur(0.8)))
+    t.alpha_composite(rune)
+
+    # Glowing crest along the top edge — full width, so rows tile seamlessly.
+    d = ImageDraw.Draw(t)
+    d.rectangle([0, 0, TILE, 0], fill=(8, 16, 34, 255))  # thin dark lip
+    crest = Image.new("RGBA", (TILE, TILE), (0, 0, 0, 0))
+    dc = ImageDraw.Draw(crest)
+    dc.rectangle([0, 1, TILE, 2], fill=(*glow, 255))
+    t.alpha_composite(crest.filter(ImageFilter.GaussianBlur(1.6)))
+    t.alpha_composite(crest)
+
+    a = t.getchannel("A").point(lambda v: 255)
+    t.putalpha(a)
+    return t
+
+
 def shadow_spike() -> Image.Image:
     """Upward blue crystal shards, hot cyan cores, transparent bg (hazard)."""
     t = Image.new("RGBA", (TILE, TILE), (0, 0, 0, 0))
@@ -126,18 +200,20 @@ def shadow_spike() -> Image.Image:
 
 def build_shadow() -> list[Image.Image]:
     fill = interior((0, 0))          # plain cracked arcane stone
-    rune = interior((0, 1))          # glowing rune-star block
-    rune2 = interior((0, 4))         # glowing rune-star block (variant)
     surface = add_top_crest(fill)    # dark stone + glowing cyan crest
+    # Floating-platform slabs (drawn, not atlas-cropped — see shadow_platform):
+    # Stone = cyan-crested arcane slab, Plate = violet-crested steel-blue step.
+    stone = shadow_platform((110, 220, 255), rng_seed=11, body_boost=1.10)
+    plate = shadow_platform((178, 140, 255), rng_seed=12, body_boost=0.92, rune_alpha=95)
     return [
         surface,          # 1 GrassTop
         fill,             # 2 Dirt
-        rune,             # 3 Stone (glowing platform block)
-        rune2,            # 4 Brick (unused in terrain)
-        rune,             # 5 Lucky (unused in terrain)
+        stone,            # 3 Stone (glowing platform slab)
+        stone,            # 4 Brick (unused in terrain)
+        stone,            # 5 Lucky (unused in terrain)
         fill,             # 6 Used  (unused in terrain)
         shadow_spike(),   # 7 Spike
-        rune2,            # 8 Plate (glowing floating step)
+        plate,            # 8 Plate (glowing floating step)
         fill,             # 9 Quicksand (unused)
         fill,             # 10 Ice (unused)
     ]

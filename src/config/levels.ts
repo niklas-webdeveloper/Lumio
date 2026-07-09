@@ -4,6 +4,7 @@ import level03 from "@/levels/level-03.json";
 import level04 from "@/levels/level-04.json";
 import level05 from "@/levels/level-05.json";
 import level06 from "@/levels/level-06.json";
+import level07 from "@/levels/level-07.json";
 import type { BgTheme } from "@/config/backgrounds";
 
 /**
@@ -25,7 +26,8 @@ export interface LevelDef {
   title: string;
   /** Parallax background theme for this level. */
   theme: BgTheme;
-  /** Cache key of this level's background music (loaded in PreloadScene). */
+  /** Cache key of this level's background music (loaded in PreloadScene).
+   *  Empty string = no soundtrack yet; the level runs silent. */
   music: string;
   /** Track name shown in the "Now Playing" toast at level start. */
   trackTitle: string;
@@ -49,6 +51,8 @@ export const LEVELS: LevelDef[] = [
   { key: "level-04", title: "Frozen Summit", theme: "snow", music: "bgm-4", trackTitle: "Hadouken", trackArtist: "Lupus Nocte", parTime: 50, distance: "short", data: level04 },
   { key: "level-05", title: "Shadow Monarch", theme: "shadow", music: "bgm-5", trackTitle: "LEveL", trackArtist: "Solo Leveling", parTime: 85, distance: "medium", data: level05 },
   { key: "level-06", title: "Crimson Shibuya", theme: "crimson", music: "bgm-6", trackTitle: "SPECIALZ", trackArtist: "Jujutsu Kaisen", parTime: 85, distance: "medium", data: level06 },
+  // No soundtrack yet (music: "") — runs silent until a track is added.
+  { key: "level-07", title: "Tropic Lagoon", theme: "lagoon", music: "", trackTitle: "", trackArtist: "", parTime: 90, distance: "medium", data: level07 },
 ];
 
 /** Total number of levels. */

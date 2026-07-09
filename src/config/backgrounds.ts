@@ -7,7 +7,8 @@ export type BgTheme =
   | "graveyard"
   | "snow"
   | "shadow"
-  | "crimson";
+  | "crimson"
+  | "lagoon";
 
 export const BG_THEMES: BgTheme[] = [
   "mountain",
@@ -16,6 +17,7 @@ export const BG_THEMES: BgTheme[] = [
   "snow",
   "shadow",
   "crimson",
+  "lagoon",
 ];
 
 /** Each theme has 5 depth layers (L0 = far sky … L4 = near foreground). */

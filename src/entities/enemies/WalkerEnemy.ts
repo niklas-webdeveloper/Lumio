@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import { Physics } from "@/config/PhysicsConfig";
 import { Enemy } from "./Enemy";
+import { attachAura } from "./aura";
 
 /** Tuning for a ground-walking enemy (see ShadowSoldier / LavaGolem). */
 export interface WalkerConfig {
@@ -21,9 +22,9 @@ export interface WalkerConfig {
   waddleDeg?: number;
   /** Tilt frequency (rad/s). */
   waddleFreq?: number;
-  /** Pulsing aura colour (WebGL preFX glow); omit for no aura. */
+  /** Pulsing aura colour (additive glow sprite); omit for no aura. */
   glowColor?: number;
-  /** Base glow strength (pulses up to ~2.2×). */
+  /** Base glow strength (scales the aura's peak alpha). */
   glowStrength?: number;
 }
 
@@ -59,18 +60,14 @@ export abstract class WalkerEnemy extends Enemy {
     this.addAura();
   }
 
-  /** A soft, slowly-pulsing glow around the sprite (WebGL only; else skipped). */
+  /** A soft, slowly-pulsing glow behind the sprite (cheap additive aura). */
   private addAura(): void {
-    if (this.cfg.glowColor === undefined || !this.preFX) return;
+    if (this.cfg.glowColor === undefined) return;
     const base = this.cfg.glowStrength ?? 2;
-    const glow = this.preFX.addGlow(this.cfg.glowColor, base, 0, false, 0.1, 12);
-    this.scene.tweens.add({
-      targets: glow,
-      outerStrength: base * 2.2,
-      duration: 900,
-      yoyo: true,
-      repeat: -1,
-      ease: "Sine.inOut",
+    attachAura(this, {
+      color: this.cfg.glowColor,
+      alpha: 0.22 * base,
+      pulseMs: 900,
     });
   }
 

@@ -22,6 +22,7 @@ export const TextureKeys = {
   // Per-theme terrain reskins (same 10-GID layout as Tiles) — see themedArt.ts.
   TilesShadow: "tex_tiles_shadow", // Solo Leveling: arcane rune stone (level 5)
   TilesCrimson: "tex_tiles_crimson", // JJK/Sukuna: charred lava rock (level 6)
+  TilesLagoon: "tex_tiles_lagoon", // SunnyLand tropics: jungle & cave bricks (level 7)
   Sky: "tex_sky", // parallax: static gradient sky + sun glow
   Rays: "tex_rays", // parallax: soft god-ray light beams (additive)
   MenuBg: "tex_menubg", // sleek modern gradient backdrop for menus
@@ -51,11 +52,14 @@ export const TextureKeys = {
   ShadowSoldier: "tex_shadow_soldier", // level 5: marching Shadow-Monarch knight
   LavaGolem: "tex_lava_golem", // level 6: molten rock golem (ground)
   Phoenix: "tex_phoenix", // level 6: fiery phoenix (flyer, 18-frame flight)
+  Frog: "tex_frog", // level 7: hopping jungle frog (SunnyLand strip)
   Pipe: "tex_pipe", // pipe obstacle / plant housing
   PipeShadow: "tex_pipe_shadow", // level 5: arcane stone conduit (themed pipe)
   PipeCrimson: "tex_pipe_crimson", // level 6: obsidian vent (themed pipe)
+  PipeLagoon: "tex_pipe_lagoon", // level 7: mossy jungle conduit (themed pipe)
   // Particle bits
   Spark: "tex_spark", // coin/sparkle particle
+  AuraGlow: "tex_aura_glow", // soft radial glow (tinted enemy auras)
   Crumb: "tex_crumb", // brick-fragment particle
   Puff: "tex_puff", // stomp/dust particle
 } as const;
@@ -65,6 +69,7 @@ export const EnemyAnim = {
   snapvineBite: "snapvine-bite",
   shadowSoldierMarch: "shadow-soldier-march",
   phoenixFly: "phoenix-fly",
+  frogIdle: "frog-idle",
 } as const;
 
 // Player character art now comes from loaded sprite sheets — see

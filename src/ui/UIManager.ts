@@ -100,6 +100,7 @@ const THEME_ACCENT: Record<BgTheme, string> = {
   snow: "#5fd0e0",
   shadow: "#8a5cff",
   crimson: "#ff4a3a",
+  lagoon: "#2ec4a9",
 };
 
 /**
@@ -779,7 +780,7 @@ class UIManager {
    */
   private showNowPlaying(): void {
     const lvl = getLevel(gameState.levelIndex);
-    if (!lvl) return;
+    if (!lvl || !lvl.trackTitle) return; // levels without a soundtrack: no toast
     document.getElementById("now-playing")?.remove();
 
     const toast = el("div", "now-playing");
@@ -832,13 +833,19 @@ class UIManager {
     resume.onclick = () => this.resume();
     const home = button("Home", "blue", { icon: "home" });
     home.onclick = () => this.showHome();
+    // Back to the level select — abandons the current run (like Home does).
+    const levels = button("Levels", "blue", { icon: "star" });
+    levels.onclick = () => {
+      this.stopGame();
+      this.showLevels();
+    };
     if (gameState.isMarathon) {
       // No free level restart mid-marathon — that would dodge the death rule.
-      row.append(resume, home);
+      row.append(resume, levels, home);
     } else {
       const retry = button("Retry", "orange");
       retry.onclick = () => this.restartLevel();
-      row.append(resume, retry, home);
+      row.append(resume, retry, levels, home);
     }
     p.appendChild(row);
     o.appendChild(p);

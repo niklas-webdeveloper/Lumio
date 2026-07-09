@@ -25,6 +25,8 @@ export interface DecorProp {
 /** Frame geometry of the themed enemy strips (must match the build script). */
 const SHADOW_SOLDIER_FRAME = { w: 59, h: 54, frames: 2 };
 const PHOENIX_FRAME = { w: 69, h: 60, frames: 18 };
+/** Frog strip (build-lagoon-art.py): idle x4, then jump + fall poses. */
+export const FROG_FRAME = { w: 35, h: 32, idleFrames: 4, jump: 4, fall: 5 };
 
 /** Themed ground-scatter props, keyed by theme. The Shadow stage deliberately
  * runs no scatter props (its arcane tiles carry the look on their own). */
@@ -33,16 +35,29 @@ const CRIMSON_DECOR: DecorProp[] = [
   { key: "decor_crimson_rock_b", url: "assets/sprites/decor/crimson/rock-b.png", scale: 1, weight: 3 },
 ];
 
+/** Tropic Lagoon scatter (SunnyLand props, build-lagoon-art.py): mostly small
+ * jungle-floor greens, with the occasional full tree or palm as a landmark. */
+const LAGOON_DECOR: DecorProp[] = [
+  { key: "decor_lagoon_shrooms", url: "assets/sprites/decor/lagoon/shrooms.png", scale: 2, weight: 4 },
+  { key: "decor_lagoon_bush", url: "assets/sprites/decor/lagoon/bush.png", scale: 1.5, weight: 3 },
+  { key: "decor_lagoon_rock", url: "assets/sprites/decor/lagoon/rock-1.png", scale: 1, weight: 2 },
+  { key: "decor_lagoon_sign", url: "assets/sprites/decor/lagoon/sign.png", scale: 1.5, weight: 1 },
+  { key: "decor_lagoon_tree", url: "assets/sprites/decor/lagoon/tree.png", scale: 1, weight: 1 },
+  { key: "decor_lagoon_palm", url: "assets/sprites/decor/lagoon/palm.png", scale: 1, weight: 1 },
+];
+
 /** Palette for a themed pipe: [base, mid, highlight, shade, rim-glow]. */
 const PIPE_PALETTES: Partial<Record<BgTheme, [number, number, number, number, number]>> = {
   shadow: [0x1b2340, 0x2c3a63, 0x5369ad, 0x141a30, 0x5cc6ff],
   crimson: [0x181210, 0x2c211c, 0x50392c, 0x0f0b09, 0xff7a1e],
+  lagoon: [0x1c4a30, 0x2f6b42, 0x5da96b, 0x143523, 0xffd95e],
 };
 
 /** The themed pipe texture key for a theme (falls back to the shared pipe). */
 export function pipeKeyFor(theme: BgTheme): string {
   if (theme === "shadow") return TextureKeys.PipeShadow;
   if (theme === "crimson") return TextureKeys.PipeCrimson;
+  if (theme === "lagoon") return TextureKeys.PipeLagoon;
   return TextureKeys.Pipe;
 }
 
@@ -106,12 +121,14 @@ function createThemedPipes(scene: Phaser.Scene): void {
   };
   gen(TextureKeys.PipeShadow, "shadow");
   gen(TextureKeys.PipeCrimson, "crimson");
+  gen(TextureKeys.PipeLagoon, "lagoon");
 }
 
 /** The terrain tileset texture key for a theme (falls back to the shared one). */
 export function terrainKeyFor(theme: BgTheme): string {
   if (theme === "shadow") return TextureKeys.TilesShadow;
   if (theme === "crimson") return TextureKeys.TilesCrimson;
+  if (theme === "lagoon") return TextureKeys.TilesLagoon;
   return TextureKeys.Tiles;
 }
 
@@ -119,16 +136,18 @@ export function terrainKeyFor(theme: BgTheme): string {
 export function decorSetFor(theme: BgTheme): readonly DecorProp[] {
   if (theme === "shadow") return []; // no scatter props on the Shadow stage
   if (theme === "crimson") return CRIMSON_DECOR;
+  if (theme === "lagoon") return LAGOON_DECOR;
   return DecorArt as readonly DecorProp[];
 }
 
 /** Every themed decor prop, for preloading. */
-const ALL_THEMED_DECOR = [...CRIMSON_DECOR];
+const ALL_THEMED_DECOR = [...CRIMSON_DECOR, ...LAGOON_DECOR];
 
 /** Queue themed tilesets, enemies and decor for loading (call in preload). */
 export function loadThemedArt(scene: Phaser.Scene): void {
   scene.load.image(TextureKeys.TilesShadow, "assets/tilesets/terrain-shadow.png");
   scene.load.image(TextureKeys.TilesCrimson, "assets/tilesets/terrain-crimson.png");
+  scene.load.image(TextureKeys.TilesLagoon, "assets/tilesets/terrain-lagoon.png");
 
   scene.load.spritesheet(
     TextureKeys.ShadowSoldier,
@@ -141,6 +160,10 @@ export function loadThemedArt(scene: Phaser.Scene): void {
     "assets/sprites/enemies/phoenix.png",
     { frameWidth: PHOENIX_FRAME.w, frameHeight: PHOENIX_FRAME.h }
   );
+  scene.load.spritesheet(TextureKeys.Frog, "assets/sprites/enemies/frog.png", {
+    frameWidth: FROG_FRAME.w,
+    frameHeight: FROG_FRAME.h,
+  });
 
   for (const d of ALL_THEMED_DECOR) scene.load.image(d.key, d.url);
 }
@@ -157,8 +180,10 @@ export function setupThemedArt(scene: Phaser.Scene): void {
   const nearest = [
     TextureKeys.TilesShadow,
     TextureKeys.TilesCrimson,
+    TextureKeys.TilesLagoon,
     TextureKeys.ShadowSoldier,
     TextureKeys.Phoenix,
+    TextureKeys.Frog,
   ];
   for (const key of nearest) {
     if (scene.textures.exists(key)) {
@@ -177,6 +202,21 @@ export function setupThemedArt(scene: Phaser.Scene): void {
         end: SHADOW_SOLDIER_FRAME.frames - 1,
       }),
       frameRate: 3, // slow, deliberate blade brandish
+      repeat: -1,
+    });
+  }
+
+  if (
+    !scene.anims.exists(EnemyAnim.frogIdle) &&
+    scene.textures.exists(TextureKeys.Frog)
+  ) {
+    scene.anims.create({
+      key: EnemyAnim.frogIdle,
+      frames: scene.anims.generateFrameNumbers(TextureKeys.Frog, {
+        start: 0,
+        end: FROG_FRAME.idleFrames - 1,
+      }),
+      frameRate: 5, // lazy blinking croak between hops
       repeat: -1,
     });
   }

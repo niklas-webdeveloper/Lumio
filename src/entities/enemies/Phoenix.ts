@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import { TextureKeys, EnemyAnim } from "@/config/AssetKeys";
 import { Enemy } from "./Enemy";
+import { attachAura } from "./aura";
 
 /** Horizontal cruise speed (px/s). */
 const PHOENIX_SPEED = 70;
@@ -41,17 +42,8 @@ export class Phoenix extends Enemy {
     this.maxX = x + rangePx;
     this.setVelocityX(PHOENIX_SPEED * this.direction);
 
-    const glow = this.preFX?.addGlow(0xff7a1e, 2, 0, false, 0.1, 12);
-    if (glow) {
-      scene.tweens.add({
-        targets: glow,
-        outerStrength: 4.2,
-        duration: 700,
-        yoyo: true,
-        repeat: -1,
-        ease: "Sine.inOut",
-      });
-    }
+    // Warm ember aura — a cheap additive glow sprite (see aura.ts).
+    attachAura(this, { color: 0xff7a1e, alpha: 0.55, pulseMs: 700 });
   }
 
   override preUpdate(time: number, delta: number): void {
