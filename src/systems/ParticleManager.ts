@@ -67,14 +67,15 @@ export class ParticleManager {
       })
       .setDepth(FX_DEPTH);
 
-    // Dark violet wisps for the shadow dash (Jin-Woo) and shadow kills.
+    // Soul-fire wisps for the shadow dash (Jin-Woo) and shadow kills: violet
+    // flames that rise and curl upward like the shadow army's aura.
     this.shadow = scene.add
       .particles(0, 0, TextureKeys.Spark, {
-        speed: { min: 80, max: 220 },
-        scale: { start: 1.2, end: 0 },
-        lifespan: 420,
-        gravityY: -40,
-        tint: [0x8a5cff, 0x4b2a99, 0xc9b6ff],
+        speed: { min: 50, max: 190 },
+        scale: { start: 0.9, end: 0 },
+        lifespan: { min: 380, max: 620 },
+        gravityY: -260, // flames lick upward
+        tint: [0x9d5cff, 0x7a2fe8, 0x5c1fd6, 0x8a5cff],
         blendMode: Phaser.BlendModes.ADD,
         emitting: false,
       })
@@ -138,12 +139,17 @@ export class ParticleManager {
 
   /** Violet burst at the start of a shadow dash. */
   dashBurst(x: number, y: number): void {
-    this.shadow.explode(18, x, y);
+    this.shadow.explode(16, x, y);
+  }
+
+  /** A couple of soul-fire wisps peeling off each dash after-image. */
+  dashWisps(x: number, y: number): void {
+    this.shadow.explode(2, x, y);
   }
 
   /** Shadow-blade kill: an enemy cut down mid-dash dissolves in violet wisps. */
   shadowKill(x: number, y: number): void {
-    this.shadow.explode(24, x, y);
+    this.shadow.explode(32, x, y);
   }
 
   /** Water splash on entering/leaving a water zone (strength scales the burst). */

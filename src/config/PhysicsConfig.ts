@@ -105,7 +105,7 @@ export const Physics = {
   /** How long the dash lasts (ms) — gravity off, velocity locked. */
   DASH_DURATION_MS: 190,
   /** Cooldown between dashes (ms); mirrored on the special button. */
-  DASH_COOLDOWN_MS: 2000,
+  DASH_COOLDOWN_MS: 4000,
   /** Fraction of dash speed kept as momentum when the dash ends. */
   DASH_EXIT_MOMENTUM: 0.55,
   /** Interval between shadow after-images spawned along the dash (ms). */

@@ -790,28 +790,40 @@ export class GameScene extends Phaser.Scene {
     this.cameras.main.shake(70, 0.0016);
   }
 
+  /** Violet shades of the shadow-army look (freshest image is brightest,
+   *  older ones sink into the deep near-black purple of the reference art). */
+  private static readonly SHADOW_SHADES = [0x9d5cff, 0x6a2fd8, 0x4b1f9e, 0x321263];
+  private dashTrailTick = 0;
+
   /**
-   * One fading after-image along the dash path — the sprite's current frame,
-   * tinted shadow-violet, dissolving in place. Cheap (an Image per ~26ms for
-   * one dash) and reads unmistakably as Jin-Woo's shadow step.
+   * One fading after-image along the dash path — the sprite's current frame
+   * as a GLOWING violet silhouette (tintFill: a plain multiplicative tint
+   * vanishes on Jin-Woo's near-black sprite). Additive blending over cycling
+   * shadow shades gives the Solo-Leveling shadow-soldier look, and each
+   * image sheds a couple of rising violet wisps as it dissolves.
    */
   private onPlayerDashTrail(p: Player): void {
+    const shade =
+      GameScene.SHADOW_SHADES[this.dashTrailTick++ % GameScene.SHADOW_SHADES.length];
     const img = this.add
       .image(p.x, p.y, p.texture.key, p.frame.name)
       .setFlipX(p.flipX)
       .setScale(p.scaleX, p.scaleY)
-      .setTint(0x7a4dff)
-      .setAlpha(0.55)
+      .setTintFill(shade)
+      .setAlpha(0.85) // NORMAL blend: solid dark silhouettes, not washed-out glow
       .setDepth(Depth.player - 0.1);
     this.tweens.add({
       targets: img,
       alpha: 0,
-      scaleX: p.scaleX * 0.92,
-      scaleY: p.scaleY * 0.92,
-      duration: 260,
+      y: p.y - 8, // the silhouette drifts up as it burns away
+      scaleX: p.scaleX * 1.08,
+      scaleY: p.scaleY * 1.08,
+      duration: 340,
       ease: "Quad.out",
       onComplete: () => img.destroy(),
     });
+    // Soul-fire wisps peeling off the trail.
+    this.particles.dashWisps(p.x, p.y);
   }
 
   private onPlayerWallJump(x: number, y: number): void {
