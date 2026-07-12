@@ -12,6 +12,7 @@ import {
 import type { BgTheme } from "@/config/backgrounds";
 import { gameState } from "@/systems/GameState";
 import { saveState, type MarathonRecord } from "@/systems/SaveState";
+import { ghostStore } from "@/systems/Ghost";
 import { audioManager } from "@/systems/AudioManager";
 import {
   UI,
@@ -169,6 +170,7 @@ class UIManager {
     this.hud = new Hud(this.root, {
       onPause: () => this.requestPause(),
       makeTools: () => [
+        this.ghostButton(),
         this.touch.makeToggleButton(),
         this.muteButton(),
         this.settingsButton(),
@@ -292,6 +294,64 @@ class UIManager {
     b.appendChild(im);
     b.onclick = () => this.toggleMute();
     this.muteImgs.push(im);
+    return b;
+  }
+
+  /** Every ghost-toggle instance (HUD + level select) — kept in sync. */
+  private ghostBtns: Array<{ btn: HTMLButtonElement; state?: HTMLElement }> = [];
+
+  private static readonly GHOST_SVG = `
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: block;">
+        <path d="M12 3a7 7 0 0 0-7 7v10l2.5-2 2.5 2 2-2 2 2 2.5-2 2.5 2V10a7 7 0 0 0-7-7z"></path>
+        <circle cx="9.5" cy="10.5" r="0.8" fill="currentColor"></circle>
+        <circle cx="14.5" cy="10.5" r="0.8" fill="currentColor"></circle>
+      </svg>
+  `;
+
+  /** Push the shared ghost on/off state into every toggle instance. */
+  private syncGhostButtons(): void {
+    const on = ghostStore.isEnabled();
+    for (const g of this.ghostBtns) {
+      g.btn.classList.toggle("active", on);
+      if (g.state) g.state.textContent = on ? "AN" : "AUS";
+    }
+  }
+
+  /**
+   * The little ghost toggle in the HUD: switches the best-run ghost replay
+   * on/off. GameScene polls ghostStore.isEnabled() live, so flipping it
+   * mid-run shows/hides the ghost immediately.
+   */
+  private ghostButton(): HTMLButtonElement {
+    const b = el("button", `icon-btn small ghost-toggle${ghostStore.isEnabled() ? " active" : ""}`);
+    b.title = "Geist (Bestzeit-Replay) ein/aus";
+    b.innerHTML = UIManager.GHOST_SVG;
+    b.onclick = () => {
+      ghostStore.toggle();
+      this.syncGhostButtons();
+    };
+    this.ghostBtns.push({ btn: b });
+    return b;
+  }
+
+  /**
+   * The labeled ghost toggle on the level-select screen: the natural place to
+   * arm the replay, since the ghost starts running the moment a level begins.
+   */
+  private ghostPill(): HTMLButtonElement {
+    const on = ghostStore.isEnabled();
+    const b = el("button", `ghost-pill ghost-toggle${on ? " active" : ""}`);
+    b.title = "Dein Bestzeit-Geist läuft im Level als Replay mit";
+    b.innerHTML =
+      UIManager.GHOST_SVG +
+      `<span class="gp-label">Geist-Replay</span>` +
+      `<span class="gp-state">${on ? "AN" : "AUS"}</span>`;
+    const state = b.querySelector(".gp-state") as HTMLElement;
+    b.onclick = () => {
+      ghostStore.toggle();
+      this.syncGhostButtons();
+    };
+    this.ghostBtns.push({ btn: b, state });
     return b;
   }
 
@@ -601,6 +661,7 @@ class UIManager {
   private buildLevels(): void {
     const s = el("div", "ui-screen hidden");
     s.append(el("div", "title", "LEVELS"));
+    s.appendChild(this.ghostPill());
     const groups = el("div", "level-groups");
     groups.id = "level-groups";
     s.appendChild(groups);
@@ -704,8 +765,15 @@ class UIManager {
     this.closeOverlays();
     this.hud.show();
     this.setContext("game");
+    // The special button follows the played character's active ability.
+    this.touch.setSpecialAbility(CHARACTERS[saveState.getSelectedCharacter()].ability);
     this.showLevelTitle();
     this.showNowPlaying();
+  }
+
+  /** Mirror the ability cooldown onto the mobile special button (per frame). */
+  setSpecialCooldown(frac: number): void {
+    this.touch.setSpecialCooldown(frac);
   }
 
   // ---------- HUD bridge (GameScene calls these every frame / per pickup) ----------

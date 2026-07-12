@@ -1,8 +1,9 @@
+import type { AbilityDef } from "@/config/characterAssets";
 import { el, isMobileDevice } from "./dom";
 
 const STORAGE_KEY_TOUCH_ENABLED = "lumios_leap_touch_controls_enabled";
 
-type TouchKey = "left" | "right" | "jump" | "down" | "useItem";
+type TouchKey = "left" | "right" | "jump" | "down" | "useItem" | "special";
 
 /**
  * On-screen touch controls: the D-pad/jump/item overlay shown during gameplay
@@ -14,6 +15,9 @@ export class TouchControls {
   private enabled: boolean;
   private toggleBtns: HTMLButtonElement[] = [];
   private itemBtn: HTMLButtonElement | null = null;
+  private specialBtn: HTMLButtonElement | null = null;
+  private specialCooldownEl: HTMLElement | null = null;
+  private lastCooldownDeg = -1;
   private overlay: HTMLElement | null = null;
 
   constructor() {
@@ -23,6 +27,7 @@ export class TouchControls {
       jump: false,
       down: false,
       useItem: false,
+      special: false,
     };
     const stored = localStorage.getItem(STORAGE_KEY_TOUCH_ENABLED);
     this.enabled = stored !== null ? stored === "true" : isMobileDevice();
@@ -43,6 +48,35 @@ export class TouchControls {
     if (!this.itemBtn) return;
     this.itemBtn.textContent = icon === "–" ? "◇" : icon;
     this.itemBtn.classList.toggle("has-item", icon !== "–");
+  }
+
+  /**
+   * Configure the special-ability button for the character being played:
+   * shown (and accent-tinted) only when the character has an active ability
+   * — the same slot serves every future character with a triggered power.
+   */
+  setSpecialAbility(ability: AbilityDef | null): void {
+    if (!this.specialBtn) return;
+    const show = ability !== null && ability.active;
+    this.specialBtn.classList.toggle("hidden", !show);
+    if (show && ability) {
+      this.specialBtn.style.setProperty("--sp-accent", ability.color);
+      this.specialBtn.title = ability.name;
+    }
+    this.setSpecialCooldown(0);
+  }
+
+  /** Update the cooldown sweep on the special button (0 = ready, 1 = just used). */
+  setSpecialCooldown(frac: number): void {
+    if (!this.specialBtn || !this.specialCooldownEl) return;
+    const deg = Math.round(Math.max(0, Math.min(1, frac)) * 360);
+    if (deg === this.lastCooldownDeg) return; // avoid per-frame style writes
+    this.lastCooldownDeg = deg;
+    this.specialCooldownEl.style.background =
+      deg <= 0
+        ? "none"
+        : `conic-gradient(rgba(8, 12, 28, 0.62) ${deg}deg, transparent ${deg}deg)`;
+    this.specialBtn.classList.toggle("ready", deg <= 0);
   }
 
   /** A corner toggle button; every instance tracks the shared enabled state. */
@@ -108,7 +142,21 @@ export class TouchControls {
     btnItem.textContent = "◇";
     this.itemBtn = btnItem;
 
-    rightGroup.append(btnItem, btnDown, btnJump);
+    // Special-ability button (shadow dash & future powers): hidden unless the
+    // played character has an active ability. Shows a cooldown sweep after use.
+    const btnSpecial = el("button", "touch-btn touch-special hidden");
+    btnSpecial.id = "btn-touch-special";
+    btnSpecial.innerHTML = `
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="5 5 12 12 5 19"></polyline>
+        <polyline points="12 5 19 12 12 19"></polyline>
+      </svg>
+      <span class="sp-cooldown"></span>
+    `;
+    this.specialBtn = btnSpecial;
+    this.specialCooldownEl = btnSpecial.querySelector(".sp-cooldown") as HTMLElement;
+
+    rightGroup.append(btnItem, btnSpecial, btnDown, btnJump);
     container.append(leftGroup, rightGroup);
     root.appendChild(container);
 
@@ -117,6 +165,7 @@ export class TouchControls {
     this.bind(btnDown, "down");
     this.bind(btnJump, "jump");
     this.bind(btnItem, "useItem");
+    this.bind(btnSpecial, "special");
   }
 
   private bind(btn: HTMLElement, stateKey: TouchKey): void {

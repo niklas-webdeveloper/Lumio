@@ -15,6 +15,10 @@ export interface ShopContext {
  * The character shop: shows the account coin balance, one card per character,
  * and lets the player buy locked characters or switch the active one.
  * Selection persists in the save (local + backend).
+ *
+ * The overlay/panel are built ONCE; buying or selecting only re-renders the
+ * balance and the card grid in place — rebuilding the whole overlay flashed
+ * the screen and made the shop feel sluggish.
  */
 export function openShop(ctx: ShopContext): void {
   const o = ctx.overlay(true);
@@ -25,23 +29,29 @@ export function openShop(ctx: ShopContext): void {
 
   // Account balance: every coin collected in any run lands here.
   const balance = el("div", "shop-balance");
-  balance.innerHTML =
-    `${icoTag("coin")}<span class="val">${saveState.getTotalCoins()}</span>` +
-    `<span class="lbl">Münzen auf deinem Konto</span>`;
   p.appendChild(balance);
 
   const grid = el("div", "shop-grid");
-  for (const char of CHARACTER_LIST) grid.appendChild(shopCard(ctx, char.id));
   p.appendChild(grid);
 
   const closeBtn = button("ZURÜCK", "blue", { icon: "home" });
   closeBtn.onclick = () => ctx.goHome();
   p.appendChild(closeBtn);
   o.appendChild(p);
+
+  const render = () => {
+    balance.innerHTML =
+      `${icoTag("coin")}<span class="val">${saveState.getTotalCoins()}</span>` +
+      `<span class="lbl">Münzen auf deinem Konto</span>`;
+    grid.replaceChildren(
+      ...CHARACTER_LIST.map((char) => shopCard(char.id, render))
+    );
+  };
+  render();
 }
 
-/** One character card in the shop (portrait, name, price / select state). */
-function shopCard(ctx: ShopContext, id: CharacterId): HTMLElement {
+/** One character card in the shop (portrait, name, ability, price / select state). */
+function shopCard(id: CharacterId, rerender: () => void): HTMLElement {
   const char = CHARACTERS[id];
   const owned = saveState.isCharacterOwned(id);
   const selected = saveState.getSelectedCharacter() === id;
@@ -61,6 +71,19 @@ function shopCard(ctx: ShopContext, id: CharacterId): HTMLElement {
   card.appendChild(el("div", "shop-name", char.name));
   card.appendChild(el("div", "shop-tagline", char.tagline));
 
+  // Ability panel: what makes this character play differently.
+  const ab = char.ability;
+  const ability = el("div", "shop-ability");
+  ability.style.setProperty("--ab-accent", ab.color);
+  ability.innerHTML =
+    `<div class="ab-head">` +
+    `<span class="ab-badge">FÄHIGKEIT</span>` +
+    `<span class="ab-name">${ab.name}</span>` +
+    `</div>` +
+    `<div class="ab-desc">${ab.desc}</div>` +
+    `<div class="ab-hint">${ab.hint}</div>`;
+  card.appendChild(ability);
+
   if (selected) {
     const b = button("AUSGEWÄHLT", "grey");
     b.disabled = true;
@@ -70,7 +93,7 @@ function shopCard(ctx: ShopContext, id: CharacterId): HTMLElement {
     b.onclick = () => {
       saveState.setSelectedCharacter(id);
       audioManager.play("coin");
-      openShop(ctx); // re-render with the new selection
+      rerender(); // in-place: card states flip, no overlay rebuild
     };
     card.appendChild(b);
   } else {
@@ -84,7 +107,7 @@ function shopCard(ctx: ShopContext, id: CharacterId): HTMLElement {
       b.onclick = () => {
         if (!saveState.buyCharacter(id, char.price)) return;
         audioManager.play("extralife"); // little fanfare for the unlock
-        openShop(ctx); // re-render: card flips to owned + selected
+        rerender(); // in-place: card flips to owned + selected
       };
     } else {
       b.disabled = true;

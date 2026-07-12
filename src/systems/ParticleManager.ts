@@ -14,6 +14,9 @@ export class ParticleManager {
   private readonly crumb: Phaser.GameObjects.Particles.ParticleEmitter;
   private readonly puff: Phaser.GameObjects.Particles.ParticleEmitter;
   private readonly ring: Phaser.GameObjects.Particles.ParticleEmitter;
+  private readonly shadow: Phaser.GameObjects.Particles.ParticleEmitter;
+  private readonly droplet: Phaser.GameObjects.Particles.ParticleEmitter;
+  private readonly bubble: Phaser.GameObjects.Particles.ParticleEmitter;
 
   constructor(scene: Phaser.Scene) {
     this.spark = scene.add
@@ -63,6 +66,47 @@ export class ParticleManager {
         emitting: false,
       })
       .setDepth(FX_DEPTH);
+
+    // Dark violet wisps for the shadow dash (Jin-Woo) and shadow kills.
+    this.shadow = scene.add
+      .particles(0, 0, TextureKeys.Spark, {
+        speed: { min: 80, max: 220 },
+        scale: { start: 1.2, end: 0 },
+        lifespan: 420,
+        gravityY: -40,
+        tint: [0x8a5cff, 0x4b2a99, 0xc9b6ff],
+        blendMode: Phaser.BlendModes.ADD,
+        emitting: false,
+      })
+      .setDepth(FX_DEPTH);
+
+    // Water droplets kicked up by splashes (heavy, fall back down).
+    this.droplet = scene.add
+      .particles(0, 0, TextureKeys.Spark, {
+        speedY: { min: -320, max: -120 },
+        speedX: { min: -130, max: 130 },
+        scale: { start: 0.9, end: 0 },
+        lifespan: 520,
+        gravityY: 900,
+        tint: [0x9be4ff, 0xdffaff, 0x5fc8e8],
+        blendMode: Phaser.BlendModes.ADD,
+        emitting: false,
+      })
+      .setDepth(FX_DEPTH);
+
+    // Small air bubbles drifting up while swimming underwater.
+    this.bubble = scene.add
+      .particles(0, 0, TextureKeys.Spark, {
+        speedY: { min: -70, max: -30 },
+        speedX: { min: -14, max: 14 },
+        scale: { start: 0.4, end: 0.1 },
+        alpha: { start: 0.8, end: 0 },
+        lifespan: 900,
+        tint: [0xdffaff, 0x9be4ff],
+        blendMode: Phaser.BlendModes.ADD,
+        emitting: false,
+      })
+      .setDepth(FX_DEPTH);
   }
 
   coinSparkle(x: number, y: number): void {
@@ -90,5 +134,30 @@ export class ParticleManager {
   doubleJumpBurst(x: number, y: number): void {
     this.ring.explode(16, x, y);
     this.puff.explode(6, x, y);
+  }
+
+  /** Violet burst at the start of a shadow dash. */
+  dashBurst(x: number, y: number): void {
+    this.shadow.explode(18, x, y);
+  }
+
+  /** Shadow-blade kill: an enemy cut down mid-dash dissolves in violet wisps. */
+  shadowKill(x: number, y: number): void {
+    this.shadow.explode(24, x, y);
+  }
+
+  /** Water splash on entering/leaving a water zone (strength scales the burst). */
+  splash(x: number, y: number, strength = 1): void {
+    this.droplet.explode(Math.round(10 + 14 * Math.min(1, strength)), x, y);
+  }
+
+  /** A couple of bubbles from a swim stroke / underwater breathing. */
+  bubbles(x: number, y: number, count = 3): void {
+    this.bubble.explode(count, x, y);
+  }
+
+  /** Grip dust while wall-sliding. */
+  wallDust(x: number, y: number): void {
+    this.puff.explode(3, x, y);
   }
 }

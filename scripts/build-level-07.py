@@ -131,6 +131,27 @@ class Builder:
     def warp_point(self, name, col, row):
         self.obj("warppoint", col * TS + 16, row * TS, name=name)
 
+    def water(self, c0, c1, surface_row=GROUND):
+        """Swimmable water zone filling a ground gap (cols c0..c1 inclusive).
+
+        The surface sits a few px below the neighbouring ground top so the
+        shoreline reads right; the zone runs to the map bottom (the game
+        clamps swimmers to the zone's lower edge — no falling out).
+        """
+        self._oid += 1
+        y = surface_row * TS + 8
+        self.objects.append({
+            "id": self._oid,
+            "name": "water",
+            "type": "water",
+            "x": c0 * TS,
+            "y": y,
+            "width": (c1 - c0 + 1) * TS,
+            "height": HEIGHT * TS - y,
+            "visible": True,
+            "rotation": 0,
+        })
+
     def bat(self, col, perch_row):
         self.obj("bat", col * TS + 16, (perch_row + 1) * TS)
 
@@ -202,7 +223,9 @@ def build_level_07():
     b.coin_row(6, 4, 10)
     b.frog(12)
 
-    # First water gap: two log branches, slightly offset heights.
+    # First water gap: two log branches, slightly offset heights. Falling in
+    # is no longer deadly — the lagoon is swimmable (paddle out and hop back).
+    b.water(16, 22)
     b.platform(17, 2, 10, PLATE)
     b.platform(20, 2, 9, PLATE)
     b.coin_row(17, 2, 8)
@@ -237,6 +260,7 @@ def build_level_07():
     b.brick(75, 8)
 
     # Vulture strait: three log steps over a wide water gap.
+    b.water(78, 87)
     b.platform(79, 2, 10, PLATE)
     b.platform(82, 2, 8, PLATE)
     b.platform(85, 2, 10, PLATE)
@@ -260,6 +284,7 @@ def build_level_07():
     b.plodder(131)
 
     # Long log-chain crossing — the stage's platforming centrepiece.
+    b.water(134, 148)
     b.platform(135, 2, 10, PLATE)
     b.platform(138, 2, 8, PLATE)
     b.platform(141, 1, 6, PLATE)

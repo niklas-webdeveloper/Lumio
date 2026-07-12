@@ -10,6 +10,9 @@ export interface SpawnObject {
   name: string;
   x: number;
   y: number;
+  /** Rect extents — 0 for point objects, set for zone objects (e.g. water). */
+  width: number;
+  height: number;
   properties: Record<string, unknown>;
 }
 
@@ -94,6 +97,8 @@ export class LevelLoader {
         name: obj.name ?? "",
         x,
         y,
+        width: obj.width ?? 0,
+        height: obj.height ?? 0,
         properties: this.readProperties(obj),
       });
     }

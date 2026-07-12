@@ -12,7 +12,11 @@ export type SfxName =
   | "complete"
   | "brick"
   | "extralife"
-  | "button";
+  | "button"
+  | "dash"
+  | "walljump"
+  | "splash"
+  | "swim";
 
 type Wave = OscillatorType;
 
@@ -158,6 +162,39 @@ class AudioManager {
     osc.stop(when + dur + 0.02);
   }
 
+  /**
+   * A short filtered white-noise burst (for whooshes and splashes, which
+   * plain oscillators can't fake convincingly).
+   */
+  private noise(
+    dur: number,
+    gain: number,
+    when: number,
+    filterFrom: number,
+    filterTo: number
+  ): void {
+    if (!this.ctx || !this.master) return;
+    const len = Math.ceil(this.ctx.sampleRate * dur);
+    const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+    const src = this.ctx.createBufferSource();
+    src.buffer = buf;
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = "lowpass";
+    filter.frequency.setValueAtTime(filterFrom, when);
+    filter.frequency.exponentialRampToValueAtTime(Math.max(40, filterTo), when + dur);
+    const env = this.ctx.createGain();
+    env.gain.setValueAtTime(0.0001, when);
+    env.gain.exponentialRampToValueAtTime(gain, when + 0.015);
+    env.gain.exponentialRampToValueAtTime(0.0001, when + dur);
+    src.connect(filter);
+    filter.connect(env);
+    env.connect(this.master);
+    src.start(when);
+    src.stop(when + dur + 0.02);
+  }
+
   /** Play a short sequence of notes starting now. */
   private seq(
     notes: Array<[freq: number, dur: number]>,
@@ -221,6 +258,26 @@ class AudioManager {
       case "button":
         // Plain, soft UI click for menu buttons — short and unobtrusive.
         this.tone(520, 400, 0.07, "sine", 0.22, t);
+        break;
+      case "dash":
+        // Shadow dash: a dark whoosh — noise sweep + a falling growl.
+        this.noise(0.22, 0.26, t, 2600, 220);
+        this.tone(340, 90, 0.2, "sawtooth", 0.12, t);
+        break;
+      case "walljump":
+        // A gripping scuff + upward kick, distinct from the ground jump.
+        this.noise(0.08, 0.14, t, 1400, 500);
+        this.tone(300, 680, 0.14, "square", 0.16, t + 0.02);
+        break;
+      case "splash":
+        // Water entry: a broadband splash with a low "bloop" underneath.
+        this.noise(0.3, 0.3, t, 3200, 300);
+        this.tone(300, 90, 0.22, "sine", 0.18, t + 0.02);
+        break;
+      case "swim":
+        // One paddle stroke — a soft, watery blub.
+        this.noise(0.1, 0.1, t, 900, 300);
+        this.tone(220, 420, 0.1, "sine", 0.12, t);
         break;
     }
   }

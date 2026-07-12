@@ -46,11 +46,33 @@ interface SheetDef {
 /** The animation slots every playable character must fill. */
 type AnimSlot = "idle" | "run" | "jump" | "fall" | "land" | "dash" | "runjump";
 
+/** Unique character ability (shown in the shop, wired up by the Player). */
+export type AbilityId = "allround" | "walljump" | "shadowdash";
+
+export interface AbilityDef {
+  id: AbilityId;
+  /** Display name on the shop card ("Schatten-Dash", …). */
+  name: string;
+  /** What it does — one or two short sentences for the shop card. */
+  desc: string;
+  /** How to trigger it (controls hint under the description). */
+  hint: string;
+  /** Accent color for the ability badge / mobile special button. */
+  color: string;
+  /**
+   * True when the ability needs the special button (keyboard C/Q or the
+   * mobile special button). Passive abilities trigger from normal movement.
+   */
+  active: boolean;
+}
+
 export interface CharacterDef {
   id: CharacterId;
   name: string;
   /** One-liner shown on the shop card. */
   tagline: string;
+  /** The character's unique ability (every character has exactly one). */
+  ability: AbilityDef;
   /** Shop price in account coins (0 = starter character). */
   price: number;
   /** Nearest-neighbor filtering for crisp upscaled pixel art. */
@@ -67,6 +89,8 @@ export interface CharacterDef {
   poleGrab: { key: string; frame: number };
   /** Static pose for the little hop off the pole. */
   poleHop: { key: string; frame: number };
+  /** Static grip pose while wall-sliding (wall-jump ability only). */
+  wallSlide?: { key: string; frame: number };
 }
 
 const animKeys = (id: CharacterId): Record<AnimSlot, string> => ({
@@ -118,6 +142,14 @@ export const CHARACTERS: Record<CharacterId, CharacterDef> = {
     id: "lumio",
     name: "Lumio",
     tagline: "Der strahlende Held der ersten Stunde.",
+    ability: {
+      id: "allround",
+      name: "Allrounder",
+      desc: "Ausgewogen und zuverlässig — die solide Basis, mit der jede Route machbar ist.",
+      hint: "Keine Extra-Taste nötig",
+      color: "#4f9be0",
+      active: false,
+    },
     price: 0,
     pixelArt: false,
     portrait: { key: "hero_portrait", url: lumioPortraitUrl },
@@ -132,6 +164,14 @@ export const CHARACTERS: Record<CharacterId, CharacterDef> = {
     id: "fox",
     name: "Foxy",
     tagline: "Der flinke Fuchs aus dem Sonnenwald.",
+    ability: {
+      id: "walljump",
+      name: "Wandsprung",
+      desc: "Rutscht an Wänden sanft hinab und springt von ihnen ab — kettenbar für Routen, die sonst niemand erreicht.",
+      hint: "In der Luft gegen eine Wand drücken + Springen",
+      color: "#ff9d4e",
+      active: false,
+    },
     price: 150,
     pixelArt: true,
     portrait: { key: "fox_portrait", url: foxPortraitUrl },
@@ -141,11 +181,20 @@ export const CHARACTERS: Record<CharacterId, CharacterDef> = {
     frameRates: { idle: 6, run: 14, jump: 10, fall: 10, land: 16, dash: 20, runjump: 8 },
     poleGrab: { key: "fox_climb", frame: 1 },
     poleHop: { key: "fox_jump", frame: 0 },
+    wallSlide: { key: "fox_climb", frame: 2 },
   },
   jinwoo: {
     id: "jinwoo",
     name: "Jin-Woo",
     tagline: "Der Schattenmonarch — vom E-Rang zur Legende.",
+    ability: {
+      id: "shadowdash",
+      name: "Schatten-Dash",
+      desc: "Blitzt unverwundbar nach vorn und zerschneidet jeden Gegner auf dem Weg — auch mitten in der Luft.",
+      hint: "Taste C · Special-Button",
+      color: "#8a5cff",
+      active: true,
+    },
     price: 300,
     pixelArt: true,
     portrait: { key: "jinwoo_portrait", url: jinwooPortraitUrl },

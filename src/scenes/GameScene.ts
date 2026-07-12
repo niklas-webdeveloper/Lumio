@@ -44,6 +44,7 @@ import { gameState, Progression } from "@/systems/GameState";
 import type { BgTheme } from "@/config/backgrounds";
 import { Physics } from "@/config/PhysicsConfig";
 import { saveState } from "@/systems/SaveState";
+import { ghostStore, GhostRecorder, GhostPlayer } from "@/systems/Ghost";
 import { audioManager } from "@/systems/AudioManager";
 import { fadeIn, fadeOutThen } from "@/systems/transition";
 import { ui } from "@/ui/UIManager";
@@ -58,7 +59,9 @@ const Depth = {
   beacon: 5,
   pipe: 6,
   enemy: 8, // in front of pipes
+  ghost: 9.5, // best-run replay, just behind the live player
   player: 10,
+  water: 11, // translucent water overlay — the player reads as submerged
 } as const;
 
 /** Delay (ms) before resolving a death or a completed level. */
@@ -103,6 +106,12 @@ export class GameScene extends Phaser.Scene {
   private theme!: BgTheme;
   /** Drifting soul-fire / ember motes on the themed stages (follows the view). */
   private ambientMotes?: Phaser.GameObjects.Particles.ParticleEmitter;
+  /** Swimmable water zones (Tropic Lagoon) — world-space rects. */
+  private waterZones: Phaser.Geom.Rectangle[] = [];
+  /** Records this run for the ghost replay (classic mode only). */
+  private ghostRecorder?: GhostRecorder;
+  /** Plays back the stored best run as a translucent ghost. */
+  private ghost?: GhostPlayer;
 
   private failed = false;
   private levelComplete = false;
@@ -123,6 +132,8 @@ export class GameScene extends Phaser.Scene {
     this.warping = false;
     this.warpPipes = [];
     this.warpPoints.clear();
+    this.waterZones = [];
+    this.ghost = undefined;
 
     // DOM HUD + level title card (the UI layer owns the HUD).
     ui.onGameSceneCreate();
@@ -177,6 +188,7 @@ export class GameScene extends Phaser.Scene {
     });
 
     gameState.startLevelTimer();
+    this.setupGhost();
     this.exposeTestApi();
 
     this.sound.mute = audioManager.isMuted(); // global mute drives the bgm
@@ -201,12 +213,14 @@ export class GameScene extends Phaser.Scene {
       this.player.updatePlayer(delta, this.inputManager.getState());
       if (this.inputManager.getState().useItemJustPressed) this.useHeldItem();
       if (this.inputManager.getState().downJustPressed) this.tryEnterWarpPipe();
+      ui.setSpecialCooldown(this.player.specialCooldownFrac);
 
       const fellOut = this.player.y > this.level.heightPx + 80;
       if (this.player.isDead || fellOut) {
         this.handleDeath();
       } else {
         gameState.tickTime(delta); // stopwatch — stops on death/completion
+        this.updateGhost();
       }
     } else if (this.warping) {
       gameState.tickTime(delta); // the detour still costs run time
@@ -228,11 +242,24 @@ export class GameScene extends Phaser.Scene {
 
     const under = terrain.getTileAtWorldXY(this.player.x, body.bottom + 2);
     const feet = terrain.getTileAtWorldXY(this.player.x, body.bottom - 1);
+
+    // Water: the body counts as swimming once its centre is inside a zone.
+    let water: Phaser.Geom.Rectangle | null = null;
+    for (const zone of this.waterZones) {
+      if (zone.contains(this.player.x, body.center.y)) {
+        water = zone;
+        break;
+      }
+    }
+
     this.player.setSurfaceState({
       ice: under?.index === TileGid.Ice,
       quicksand:
         feet?.index === TileGid.Quicksand ||
         under?.index === TileGid.Quicksand,
+      water: water !== null,
+      waterSurfaceY: water?.y ?? 0,
+      waterBottomY: water ? water.bottom : 0,
     });
 
     // Fully swallowed: the sand closes well over the player's head (checked
@@ -391,6 +418,12 @@ export class GameScene extends Phaser.Scene {
             new Phaser.Math.Vector2(obj.x, obj.y)
           );
           break;
+        case "water":
+          // Swimmable zone: physics rect + the translucent lagoon visuals.
+          this.addWaterZone(
+            new Phaser.Geom.Rectangle(obj.x, obj.y, obj.width, obj.height)
+          );
+          break;
         case "beacon":
           this.createBeacon(obj.x, obj.y);
           break;
@@ -399,6 +432,72 @@ export class GameScene extends Phaser.Scene {
       }
     }
     gameState.levelCoinTotal = coinTotal;
+  }
+
+  /**
+   * A swimmable water zone: the physics rect plus its visuals — a translucent
+   * teal body drawn OVER the player (so swimmers read as submerged), a
+   * shimmering surface line, and a lazy field of rising bubbles.
+   */
+  private addWaterZone(rect: Phaser.Geom.Rectangle): void {
+    this.waterZones.push(rect);
+
+    // Water body: two stacked tints fake a light-to-deep gradient.
+    this.add
+      .rectangle(rect.x, rect.y, rect.width, rect.height * 0.45, 0x2ea8c9, 0.3)
+      .setOrigin(0, 0)
+      .setDepth(Depth.water);
+    this.add
+      .rectangle(
+        rect.x,
+        rect.y + rect.height * 0.45,
+        rect.width,
+        rect.height * 0.55,
+        0x14688f,
+        0.42
+      )
+      .setOrigin(0, 0)
+      .setDepth(Depth.water);
+
+    // Surface line: a bright strip whose alpha breathes like lapping water.
+    const surface = this.add
+      .rectangle(rect.x, rect.y - 1, rect.width, 3, 0xbdf2ff, 0.75)
+      .setOrigin(0, 0)
+      .setDepth(Depth.water + 0.1);
+    this.tweens.add({
+      targets: surface,
+      alpha: { from: 0.75, to: 0.35 },
+      scaleY: { from: 1, to: 1.8 },
+      duration: 1400,
+      yoyo: true,
+      repeat: -1,
+      ease: "Sine.inOut",
+    });
+
+    // Ambient bubbles drifting up through the zone.
+    this.add
+      .particles(0, 0, TextureKeys.Spark, {
+        lifespan: 2600,
+        speedY: { min: -26, max: -12 },
+        speedX: { min: -6, max: 6 },
+        scale: { start: 0.28, end: 0.08 },
+        alpha: { start: 0.5, end: 0 },
+        tint: [0xdffaff, 0x9be4ff],
+        blendMode: Phaser.BlendModes.ADD,
+        frequency: 420,
+        quantity: 1,
+        emitZone: {
+          type: "random" as const,
+          source: new Phaser.Geom.Rectangle(
+            rect.x,
+            rect.y + 10,
+            rect.width,
+            Math.max(4, rect.height - 14)
+          ),
+          quantity: 1,
+        },
+      })
+      .setDepth(Depth.water + 0.2);
   }
 
   /** A soft golden sparkle over a warp pipe's mouth marks it as enterable. */
@@ -621,6 +720,18 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
+    // Shadow dash: enemies in the dash path are cut down in a violet burst;
+    // unstompable ones (Snapvine) are simply phased through unharmed.
+    if (this.player.isDashing) {
+      if (enemy.stompable) {
+        enemy.stomp();
+        gameState.addScore(Progression.STOMP_SCORE);
+        this.particles.shadowKill(enemy.x, enemy.y);
+        audioManager.play("stomp");
+      }
+      return;
+    }
+
     const pb = this.player.body;
     const eb = enemy.body;
     // Judge "from above" by where the player's feet were *last* step, not
@@ -655,6 +766,73 @@ export class GameScene extends Phaser.Scene {
     this.events.on("player-doublejump", this.onPlayerDoubleJump, this);
     this.events.off("player-groundpound-land", this.onGroundPoundLand, this);
     this.events.on("player-groundpound-land", this.onGroundPoundLand, this);
+    // Ability + water effects (emitted by Player; fx/sfx live in the scene).
+    this.events.off("player-dash", this.onPlayerDash, this);
+    this.events.on("player-dash", this.onPlayerDash, this);
+    this.events.off("player-dash-trail", this.onPlayerDashTrail, this);
+    this.events.on("player-dash-trail", this.onPlayerDashTrail, this);
+    this.events.off("player-walljump", this.onPlayerWallJump, this);
+    this.events.on("player-walljump", this.onPlayerWallJump, this);
+    this.events.off("player-wallslide", this.onPlayerWallSlide, this);
+    this.events.on("player-wallslide", this.onPlayerWallSlide, this);
+    this.events.off("player-splash", this.onPlayerSplash, this);
+    this.events.on("player-splash", this.onPlayerSplash, this);
+    this.events.off("player-stroke", this.onPlayerStroke, this);
+    this.events.on("player-stroke", this.onPlayerStroke, this);
+    this.events.off("player-bubble", this.onPlayerBubble, this);
+    this.events.on("player-bubble", this.onPlayerBubble, this);
+  }
+
+  /** Shadow dash kickoff: violet burst, whoosh, and a tiny camera nudge. */
+  private onPlayerDash(x: number, y: number): void {
+    this.particles.dashBurst(x, y);
+    audioManager.play("dash");
+    this.cameras.main.shake(70, 0.0016);
+  }
+
+  /**
+   * One fading after-image along the dash path — the sprite's current frame,
+   * tinted shadow-violet, dissolving in place. Cheap (an Image per ~26ms for
+   * one dash) and reads unmistakably as Jin-Woo's shadow step.
+   */
+  private onPlayerDashTrail(p: Player): void {
+    const img = this.add
+      .image(p.x, p.y, p.texture.key, p.frame.name)
+      .setFlipX(p.flipX)
+      .setScale(p.scaleX, p.scaleY)
+      .setTint(0x7a4dff)
+      .setAlpha(0.55)
+      .setDepth(Depth.player - 0.1);
+    this.tweens.add({
+      targets: img,
+      alpha: 0,
+      scaleX: p.scaleX * 0.92,
+      scaleY: p.scaleY * 0.92,
+      duration: 260,
+      ease: "Quad.out",
+      onComplete: () => img.destroy(),
+    });
+  }
+
+  private onPlayerWallJump(x: number, y: number): void {
+    this.particles.jumpDust(x, y);
+  }
+
+  private onPlayerWallSlide(x: number, y: number): void {
+    this.particles.wallDust(x, y);
+  }
+
+  private onPlayerSplash(x: number, y: number, impact: number): void {
+    this.particles.splash(x, y, impact / 500);
+    audioManager.play("splash");
+  }
+
+  private onPlayerStroke(x: number, y: number): void {
+    this.particles.bubbles(x, y + 6, 4);
+  }
+
+  private onPlayerBubble(x: number, y: number): void {
+    this.particles.bubbles(x, y, 2);
   }
 
   private onPlayerJump(x: number, y: number): void {
@@ -738,6 +916,35 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
+  // ----- Ghost replay (race your best run) -----
+
+  /**
+   * Classic mode: always record the current attempt (it becomes the ghost on
+   * a new best time) and, if enabled and available, play back the stored best
+   * run as a translucent ghost.
+   */
+  private setupGhost(): void {
+    if (gameState.isMarathon) {
+      this.ghostRecorder = undefined;
+      return;
+    }
+    this.ghostRecorder = new GhostRecorder();
+    const data = ghostStore.load(gameState.levelIndex);
+    if (data) {
+      this.ghost = new GhostPlayer(this, data, Depth.ghost);
+      this.ghost.setVisible(ghostStore.isEnabled());
+    }
+  }
+
+  /** Advance recording + playback with the level clock (called from update). */
+  private updateGhost(): void {
+    this.ghostRecorder?.update(gameState.timeElapsed, this.player);
+    if (this.ghost) {
+      this.ghost.setVisible(ghostStore.isEnabled());
+      if (ghostStore.isEnabled()) this.ghost.update(gameState.timeElapsed);
+    }
+  }
+
   // ----- Run-loop concerns -----
 
   private damagePlayer(): void {
@@ -806,6 +1013,14 @@ export class GameScene extends Phaser.Scene {
         );
       }
     });
+
+    // A new best time crowns this run as the level's ghost. Also seed a ghost
+    // when none exists yet — old profiles carry best times from before the
+    // ghost feature that may never be beaten, and without this the toggle
+    // would stay dead forever.
+    if (this.ghostRecorder && (newBestTime || !ghostStore.load(levelIndex))) {
+      ghostStore.save(levelIndex, this.ghostRecorder.finish(timeSec, this.player));
+    }
 
     // Marathon: no results screen between levels — flag sequence, a world-title
     // splash, then straight into the next level. Only the final level shows
@@ -978,6 +1193,18 @@ export class GameScene extends Phaser.Scene {
       icicleCount: () => this.icicles.getLength(),
       onIce: () => this.player.isOnIce,
       inQuicksand: () => this.player.isInQuicksand,
+      inWater: () => this.player.isInWater,
+      isDashing: () => this.player.isDashing,
+      isWallSliding: () => this.player.isWallSliding,
+      specialCooldown: () => this.player.specialCooldownFrac,
+      waterZoneCount: () => this.waterZones.length,
+      hasGhost: () => this.ghost !== undefined,
+      pressSpecial: () => {
+        if (window.touchInputState) window.touchInputState.special = true;
+        this.time.delayedCall(50, () => {
+          if (window.touchInputState) window.touchInputState.special = false;
+        });
+      },
       plodderList: () =>
         this.plodders
           .getChildren()

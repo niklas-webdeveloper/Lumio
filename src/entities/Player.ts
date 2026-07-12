@@ -104,6 +104,39 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   /** Remaining wind-up hang before the slam actually drops (ms). */
   private groundPoundCharge = 0;
 
+  // ----- Shadow dash (Jin-Woo) -----
+  /** True while the shadow dash is active (invulnerable, velocity locked). */
+  private dashing = false;
+  /** Remaining dash time (ms). */
+  private dashTimer = 0;
+  /** Remaining cooldown until the next dash (ms). */
+  private dashCooldown = 0;
+  /** Direction of the active dash. */
+  private dashDir: 1 | -1 = 1;
+  /** Accumulator spawning shadow after-images along the dash. */
+  private dashTrailAccum = 0;
+
+  // ----- Wall jump (Foxy) -----
+  /** True while sliding down a wall (soft fall, wall-jump ready). */
+  private wallSliding = false;
+  /** Grace window to still wall-jump after leaving the wall (ms). */
+  private wallCoyoteTimer = 0;
+  /** Which side the last touched wall was on (1 = right, -1 = left). */
+  private lastWallDir: 1 | -1 = 1;
+  /** Steering lock after a wall jump so the leap arcs away first (ms). */
+  private steerLockTimer = 0;
+  /** Throttle for the wall-slide dust effect (ms). */
+  private wallDustAccum = 0;
+
+  // ----- Water (swimming) -----
+  /** True while the body is in a water zone (set by the scene each frame). */
+  private inWater = false;
+  /** World-y of the water surface / bed of the current zone. */
+  private waterSurfaceY = 0;
+  private waterBottomY = 0;
+  /** Throttle for the underwater bubble trail (ms). */
+  private bubbleAccum = 0;
+
   constructor(scene: Phaser.Scene, x: number, y: number) {
     const char = CHARACTERS[saveState.getSelectedCharacter()];
     super(scene, x, y, char.sheets.idle.key, 0);
@@ -141,6 +174,39 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     // jumps (hop out) and animation, even though nothing blocks the body.
     const wading = this.inQuicksand && this.body.velocity.y >= 0;
 
+    // Dash cooldown always ticks, even mid-jump or while pounding.
+    if (this.dashCooldown > 0) this.dashCooldown = Math.max(0, this.dashCooldown - deltaMs);
+    this.steerLockTimer = Math.max(0, this.steerLockTimer - deltaMs);
+
+    // An active shadow dash overrides all normal control until it resolves.
+    if (this.dashing) {
+      this.updateDash(deltaMs);
+      this.updateInvulnerability(deltaMs);
+      this.updateStarPower(deltaMs);
+      return;
+    }
+    // Special button: Jin-Woo's shadow dash (ground or air, cooldown-gated).
+    if (
+      input.specialJustPressed &&
+      this.char.ability.id === "shadowdash" &&
+      this.dashCooldown <= 0 &&
+      !this.groundPounding
+    ) {
+      this.startDash(input);
+      this.updateInvulnerability(deltaMs);
+      this.updateStarPower(deltaMs);
+      return;
+    }
+
+    // Swimming replaces the whole grounded/jump/gravity stack.
+    if (this.inWater) {
+      if (this.groundPounding) this.endGroundPound();
+      this.updateSwim(dt, deltaMs, input);
+      this.updateInvulnerability(deltaMs);
+      this.updateStarPower(deltaMs);
+      return;
+    }
+
     // A ground pound overrides all normal control until it resolves.
     if (this.groundPounding) {
       // Slamming into quicksand "lands" the pound — and then you sink.
@@ -161,22 +227,219 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.updateCrouch(grounded, input);
     this.updateHorizontal(dt, grounded, input);
     this.updateTimers(deltaMs, grounded || wading, input);
+    this.updateWallSlide(deltaMs, grounded, input);
     this.updateJump(input);
     this.updateGravity();
+    this.applyWallSlideCap();
     this.applyQuicksandSink();
     this.updateInvulnerability(deltaMs);
     this.updateStarPower(deltaMs);
     this.updateAnimation(grounded || wading, input);
   }
 
+  // ----- Shadow dash (Jin-Woo's ability) -----
+
+  /** Begin the shadow dash: a fixed-speed horizontal blink with gravity off. */
+  private startDash(input: InputState): void {
+    this.dashing = true;
+    this.dashTimer = Physics.DASH_DURATION_MS;
+    this.dashTrailAccum = 0;
+    this.dashDir = input.moveX !== 0 ? (input.moveX > 0 ? 1 : -1) : this.facing;
+    this.facing = this.dashDir;
+    this.setFlipX(this.facing === -1);
+    this.standUp();
+    this.endSpin();
+    this.isJumpRising = false;
+    // The normal horizontal cap (RUN_SPEED) would clamp the dash — raise it.
+    this.body.setMaxVelocity(Physics.DASH_SPEED, Physics.MAX_FALL_SPEED);
+    this.body.setVelocity(Physics.DASH_SPEED * this.dashDir, 0);
+    this.setGravityY(0);
+    this.anims.play(this.char.anims.dash, true);
+    this.scene.events.emit("player-dash", this.x, this.y, this.dashDir);
+  }
+
+  /** Advance an active dash; holds the velocity and spawns the shadow trail. */
+  private updateDash(deltaMs: number): void {
+    this.dashTimer -= deltaMs;
+    this.body.setVelocity(Physics.DASH_SPEED * this.dashDir, 0);
+    this.setGravityY(0);
+
+    // A ribbon of fading after-images marks the path (the "shadow" look).
+    this.dashTrailAccum += deltaMs;
+    while (this.dashTrailAccum >= Physics.DASH_TRAIL_INTERVAL_MS) {
+      this.dashTrailAccum -= Physics.DASH_TRAIL_INTERVAL_MS;
+      this.scene.events.emit("player-dash-trail", this);
+    }
+
+    // Hitting a wall ends the dash early (no grinding along the tile face).
+    const blocked =
+      this.dashDir === 1 ? this.body.blocked.right : this.body.blocked.left;
+    if (this.dashTimer <= 0 || blocked) this.endDash();
+  }
+
+  /** Resolve the dash: restore physics caps and keep a bit of momentum. */
+  private endDash(): void {
+    this.dashing = false;
+    this.dashTimer = 0;
+    this.dashCooldown = Physics.DASH_COOLDOWN_MS;
+    this.body.setMaxVelocity(Physics.RUN_SPEED, Physics.MAX_FALL_SPEED);
+    const momentum = Math.min(
+      Physics.DASH_SPEED * Physics.DASH_EXIT_MOMENTUM,
+      Physics.RUN_SPEED
+    );
+    this.setVelocityX(momentum * this.dashDir);
+  }
+
+  // ----- Wall slide & wall jump (Foxy's ability) -----
+
+  /** Detect the wall-slide state and keep the wall-coyote window fresh. */
+  private updateWallSlide(deltaMs: number, grounded: boolean, input: InputState): void {
+    this.wallCoyoteTimer = Math.max(0, this.wallCoyoteTimer - deltaMs);
+    if (this.char.ability.id !== "walljump") {
+      this.wallSliding = false;
+      return;
+    }
+    const wallDir = this.body.blocked.right ? 1 : this.body.blocked.left ? -1 : 0;
+    this.wallSliding =
+      !grounded &&
+      wallDir !== 0 &&
+      input.moveX === wallDir &&
+      this.body.velocity.y > 0;
+    if (this.wallSliding) {
+      this.lastWallDir = wallDir as 1 | -1;
+      this.wallCoyoteTimer = Physics.WALL_COYOTE_MS;
+      // Soft dust puffs where the paws grip the wall.
+      this.wallDustAccum += deltaMs;
+      if (this.wallDustAccum >= 90) {
+        this.wallDustAccum = 0;
+        const side = this.body.width / 2;
+        this.scene.events.emit("player-wallslide", this.x + wallDir * side, this.y);
+      }
+    } else {
+      this.wallDustAccum = 0;
+    }
+  }
+
+  /** Cap the fall speed while pressed against a wall (applied after gravity). */
+  private applyWallSlideCap(): void {
+    if (this.wallSliding && this.body.velocity.y > Physics.WALL_SLIDE_SPEED) {
+      this.setVelocityY(Physics.WALL_SLIDE_SPEED);
+    }
+  }
+
   /**
    * Per-frame surface flags, set by the scene from the tiles under the feet
-   * (the terrain layer lives there, not here). Must be called before
-   * updatePlayer each frame.
+   * and the water zones (the terrain/zones live there, not here). Must be
+   * called before updatePlayer each frame.
    */
-  public setSurfaceState(state: { ice: boolean; quicksand: boolean }): void {
+  public setSurfaceState(state: {
+    ice: boolean;
+    quicksand: boolean;
+    water?: boolean;
+    waterSurfaceY?: number;
+    waterBottomY?: number;
+  }): void {
     this.onIce = state.ice;
     this.inQuicksand = state.quicksand;
+
+    const water = state.water ?? false;
+    if (water) {
+      this.waterSurfaceY = state.waterSurfaceY ?? 0;
+      this.waterBottomY = state.waterBottomY ?? 0;
+    }
+    if (water !== this.inWater && !this.dead) {
+      this.inWater = water;
+      if (water) this.onEnterWater();
+      else this.onExitWater();
+    }
+  }
+
+  /** Plunge into water: splash, absorb most of the fall, reset the air jump. */
+  private onEnterWater(): void {
+    const impact = Math.max(0, this.body.velocity.y);
+    this.setVelocityY(impact * Physics.WATER_ENTRY_DAMPING);
+    this.standUp();
+    this.groundPounding = false;
+    this.groundPoundCharge = 0;
+    this.endSpin();
+    this.isJumpRising = false;
+    this.scene.events.emit("player-splash", this.x, this.waterSurfaceY, impact);
+  }
+
+  /** Leave the water (usually a surface jump): restore air physics. */
+  private onExitWater(): void {
+    this.bubbleAccum = 0;
+    // Grant the one air jump so leaving the water feels like a fresh jump arc.
+    this.jumpsUsed = 1;
+    if (this.body.velocity.y < 0) this.isJumpRising = true;
+  }
+
+  /**
+   * Swim physics: soupy horizontal drift, tap-to-stroke upward paddling and a
+   * full leap when jumping right at the surface. Replaces the grounded stack
+   * (crouch/jump/gravity) while in a water zone.
+   */
+  private updateSwim(dt: number, deltaMs: number, input: InputState): void {
+    // Horizontal: heavier accel/friction than air, low top speed.
+    const targetSpeed = input.moveX * Physics.WATER_MAX_SPEED;
+    const rate = input.moveX !== 0 ? Physics.WATER_ACCEL : Physics.WATER_FRICTION;
+    this.setVelocityX(approach(this.body.velocity.x, targetSpeed, rate * dt));
+    if (input.moveX !== 0) {
+      this.facing = input.moveX > 0 ? 1 : -1;
+      this.setFlipX(this.facing === -1);
+    }
+
+    // Vertical: light gravity, capped sink, strokes on tap.
+    this.setGravityY(Physics.WATER_GRAVITY);
+    const nearSurface =
+      this.body.top - this.waterSurfaceY < Physics.SURFACE_JUMP_ZONE_PX;
+    if (input.jumpJustPressed) {
+      if (nearSurface) {
+        // Breach: a full jump straight out of the water.
+        this.setVelocityY(Physics.JUMP_VELOCITY * 0.92);
+        this.isJumpRising = true;
+        audioManager.play("jump");
+        this.scene.events.emit("player-splash", this.x, this.waterSurfaceY, 260);
+      } else {
+        // Stroke: one crisp paddle upward.
+        this.setVelocityY(Physics.SWIM_STROKE_VELOCITY);
+        audioManager.play("swim");
+        this.scene.events.emit("player-stroke", this.x, this.y);
+      }
+    }
+    // Holding down dives a little faster than the passive sink; otherwise the
+    // water caps the sink speed well below the air terminal velocity.
+    if (input.down && this.body.velocity.y >= 0) {
+      this.setVelocityY(Physics.WATER_MAX_SINK * 1.6);
+    } else if (this.body.velocity.y > Physics.WATER_MAX_SINK) {
+      this.setVelocityY(Physics.WATER_MAX_SINK);
+    }
+
+    // The lakebed acts as a soft floor: hold the feet on it. Velocity alone
+    // isn't enough — gravity integrates a little sink every step, so the
+    // position must be corrected too or the body slowly drifts out the bottom.
+    const maxBottom = this.waterBottomY - 2;
+    if (this.body.bottom > maxBottom) {
+      this.y -= this.body.bottom - maxBottom;
+      if (this.body.velocity.y > 0) this.setVelocityY(0);
+    }
+
+    // A gentle trail of bubbles while fully submerged.
+    if (this.body.top > this.waterSurfaceY) {
+      this.bubbleAccum += deltaMs;
+      if (this.bubbleAccum >= 380) {
+        this.bubbleAccum = 0;
+        this.scene.events.emit("player-bubble", this.x, this.body.top + 4);
+      }
+    }
+
+    // Swim pose: rising = jump sheet, sinking = fall sheet, both slowed.
+    this.anims.play(
+      this.body.velocity.y < -30 ? this.char.anims.jump : this.char.anims.fall,
+      true
+    );
+    this.anims.timeScale = 0.6;
+    this.wasGrounded = false;
   }
 
   /**
@@ -287,6 +550,18 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     }
     this.wasGrounded = grounded;
 
+    // Wall slide: hold the climb/grip pose against the wall (Foxy has real
+    // climb art; other sheets fall back to the falling pose).
+    if (this.wallSliding) {
+      this.anims.stop();
+      if (this.char.wallSlide) {
+        this.setTexture(this.char.wallSlide.key, this.char.wallSlide.frame);
+      } else {
+        this.anims.play(this.char.anims.fall, true);
+      }
+      return;
+    }
+
     if (!grounded) {
       if (vy < -20) {
         // Rising: a running jump when carrying speed, else a normal jump.
@@ -372,6 +647,8 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 
   /** Acceleration / friction horizontal movement with crisp turn-arounds. */
   private updateHorizontal(dt: number, grounded: boolean, input: InputState): void {
+    // Post-wall-jump steering lock: keep the kick-off momentum untouched.
+    if (this.steerLockTimer > 0) return;
     let maxSpeed: number = this.ducking
       ? Physics.CROUCH_SPEED
       : input.run
@@ -453,6 +730,30 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       this.coyoteTimer = 0;
       audioManager.play("jump");
       this.scene.events.emit("player-jump", this.x, this.body.bottom);
+    } else if (
+      input.jumpJustPressed &&
+      !this.onGround &&
+      this.char.ability.id === "walljump" &&
+      this.wallCoyoteTimer > 0
+    ) {
+      // Wall jump: kick off away from the wall; steering locks briefly so the
+      // leap arcs out before the player can pull back in. Restores the air
+      // jump, so wall → double jump chains work.
+      this.wallCoyoteTimer = 0;
+      this.wallSliding = false;
+      this.steerLockTimer = Physics.WALL_JUMP_LOCK_MS;
+      this.facing = this.lastWallDir === 1 ? -1 : 1;
+      this.setFlipX(this.facing === -1);
+      this.setVelocity(Physics.WALL_JUMP_VX * this.facing, Physics.WALL_JUMP_VY);
+      this.isJumpRising = true;
+      this.jumpsUsed = 1;
+      this.anims.play(this.char.anims.runjump, true);
+      audioManager.play("walljump");
+      this.scene.events.emit(
+        "player-walljump",
+        this.x + this.lastWallDir * (this.body.width / 2),
+        this.y
+      );
     } else if (
       input.jumpJustPressed &&
       !this.onGround &&
@@ -554,7 +855,10 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
    */
   public takeDamage(): DamageResult {
     if (this.dead) return "died";
-    if (this.invulnTimer > 0 || this.starTimer > 0) return "invulnerable";
+    // The shadow dash phases through danger — untouchable while it lasts.
+    if (this.invulnTimer > 0 || this.starTimer > 0 || this.dashing) {
+      return "invulnerable";
+    }
 
     if (this.size === "big") {
       this.standUp(); // resize from a clean standing pose
@@ -582,6 +886,9 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.starTimer = 0;
     this.clearTint();
     this.groundPounding = false;
+    this.dashing = false;
+    this.wallSliding = false;
+    this.inWater = false;
     this.standUp();
     this.body.setMaxVelocity(Physics.RUN_SPEED, Physics.MAX_FALL_SPEED);
     this.setAlpha(1);
@@ -603,6 +910,9 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   public beginPoleSlide(facePole: 1 | -1): void {
     this.groundPounding = false;
     this.groundPoundCharge = 0;
+    this.dashing = false;
+    this.wallSliding = false;
+    this.body.setMaxVelocity(Physics.RUN_SPEED, Physics.MAX_FALL_SPEED);
     this.endSpin();
     this.standUp();
     this.invulnTimer = 0;
@@ -692,6 +1002,27 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   /** True while a ground pound (down-slam) is in progress. */
   public get isGroundPounding(): boolean {
     return this.groundPounding;
+  }
+
+  /** True while the shadow dash is active (phases through enemies/hazards). */
+  public get isDashing(): boolean {
+    return this.dashing;
+  }
+
+  /** Remaining dash cooldown as 0..1 (0 = ready) — drives the special button. */
+  public get specialCooldownFrac(): number {
+    if (this.char.ability.id !== "shadowdash") return 0;
+    return Phaser.Math.Clamp(this.dashCooldown / Physics.DASH_COOLDOWN_MS, 0, 1);
+  }
+
+  /** True while sliding down a wall (wall-jump ready). */
+  public get isWallSliding(): boolean {
+    return this.wallSliding;
+  }
+
+  /** True while swimming in a water zone. */
+  public get isInWater(): boolean {
+    return this.inWater;
   }
 
   /** Live tuning snapshot (used by the Milestone 2 debug overlay). */

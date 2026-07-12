@@ -98,6 +98,48 @@ export const Physics = {
   GROUND_POUND_CHARGE_MS: 110,
   /** Downward slam speed during a ground pound (exceeds normal terminal). */
   GROUND_POUND_SPEED: 1000,
+
+  // ----- Shadow dash (Jin-Woo's character ability) -----
+  /** Horizontal speed during the dash (well above RUN_SPEED). */
+  DASH_SPEED: 660,
+  /** How long the dash lasts (ms) — gravity off, velocity locked. */
+  DASH_DURATION_MS: 190,
+  /** Cooldown between dashes (ms); mirrored on the special button. */
+  DASH_COOLDOWN_MS: 2000,
+  /** Fraction of dash speed kept as momentum when the dash ends. */
+  DASH_EXIT_MOMENTUM: 0.55,
+  /** Interval between shadow after-images spawned along the dash (ms). */
+  DASH_TRAIL_INTERVAL_MS: 26,
+
+  // ----- Wall jump (Foxy's character ability) -----
+  /** Max slide speed while pressed against a wall (soft fall). */
+  WALL_SLIDE_SPEED: 100,
+  /** Horizontal kick-off speed away from the wall. */
+  WALL_JUMP_VX: 310,
+  /** Upward impulse of a wall jump. */
+  WALL_JUMP_VY: -540,
+  /** Steering lock after a wall jump so the leap arcs away first (ms). */
+  WALL_JUMP_LOCK_MS: 130,
+  /** Grace window to still wall-jump shortly after leaving the wall (ms). */
+  WALL_COYOTE_MS: 90,
+
+  // ----- Water (swimming — Tropic Lagoon) -----
+  /** Gravity while submerged (water carries most of the weight). */
+  WATER_GRAVITY: 460,
+  /** Terminal sink speed in water. */
+  WATER_MAX_SINK: 120,
+  /** Horizontal speed cap while swimming. */
+  WATER_MAX_SPEED: 130,
+  /** Horizontal acceleration in water (sluggish, soupy). */
+  WATER_ACCEL: 520,
+  /** Horizontal deceleration in water with no input. */
+  WATER_FRICTION: 300,
+  /** Upward impulse of one swim stroke (tap jump while submerged). */
+  SWIM_STROKE_VELOCITY: -280,
+  /** Within this distance of the surface a jump leaps fully out of the water. */
+  SURFACE_JUMP_ZONE_PX: 14,
+  /** Fraction of the fall speed kept when plunging into water (the rest splashes away). */
+  WATER_ENTRY_DAMPING: 0.35,
 } as const;
 
 /**

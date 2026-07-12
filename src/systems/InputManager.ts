@@ -8,6 +8,7 @@ declare global {
       jump: boolean;
       down: boolean;
       useItem: boolean;
+      special: boolean;
     };
   }
 }
@@ -36,6 +37,8 @@ export interface InputState {
   pauseJustPressed: boolean;
   /** Use-item (fire burst / star) pressed on exactly this frame (edge). */
   useItemJustPressed: boolean;
+  /** Character-ability button (shadow dash) pressed on exactly this frame (edge). */
+  specialJustPressed: boolean;
 }
 
 /**
@@ -51,6 +54,7 @@ export class InputManager {
     run: Phaser.Input.Keyboard.Key[];
     pause: Phaser.Input.Keyboard.Key[];
     useItem: Phaser.Input.Keyboard.Key[];
+    special: Phaser.Input.Keyboard.Key[];
   };
 
   /** Previous-frame edge tracking for buttons we synthesize from multiple keys. */
@@ -58,6 +62,7 @@ export class InputManager {
   private prevDownHeld = false;
   private prevPauseHeld = false;
   private prevUseItemHeld = false;
+  private prevSpecialHeld = false;
 
   private state: InputState = {
     moveX: 0,
@@ -69,6 +74,7 @@ export class InputManager {
     downJustPressed: false,
     pauseJustPressed: false,
     useItemJustPressed: false,
+    specialJustPressed: false,
   };
 
   constructor(scene: Phaser.Scene) {
@@ -87,6 +93,7 @@ export class InputManager {
       run: add(KeyCodes.SHIFT),
       pause: add(KeyCodes.P, KeyCodes.ESC),
       useItem: add(KeyCodes.E, KeyCodes.X),
+      special: add(KeyCodes.C, KeyCodes.Q),
     };
 
     // Prevent Space/arrows from scrolling the page.
@@ -104,7 +111,7 @@ export class InputManager {
     const anyDown = (keys: Phaser.Input.Keyboard.Key[]): boolean =>
       keys.some((k) => k.isDown);
 
-    const touch = window.touchInputState || { left: false, right: false, jump: false, down: false, useItem: false };
+    const touch = window.touchInputState || { left: false, right: false, jump: false, down: false, useItem: false, special: false };
 
     const left = anyDown(this.keys.left) || touch.left;
     const right = anyDown(this.keys.right) || touch.right;
@@ -112,6 +119,7 @@ export class InputManager {
     const downHeld = anyDown(this.keys.down) || touch.down;
     const pauseHeld = anyDown(this.keys.pause);
     const useItemHeld = anyDown(this.keys.useItem) || (touch.useItem ?? false);
+    const specialHeld = anyDown(this.keys.special) || (touch.special ?? false);
 
     this.state.moveX = (right ? 1 : 0) - (left ? 1 : 0);
     this.state.run = anyDown(this.keys.run);
@@ -122,11 +130,13 @@ export class InputManager {
     this.state.downJustPressed = downHeld && !this.prevDownHeld;
     this.state.pauseJustPressed = pauseHeld && !this.prevPauseHeld;
     this.state.useItemJustPressed = useItemHeld && !this.prevUseItemHeld;
+    this.state.specialJustPressed = specialHeld && !this.prevSpecialHeld;
 
     this.prevJumpHeld = jumpHeld;
     this.prevDownHeld = downHeld;
     this.prevPauseHeld = pauseHeld;
     this.prevUseItemHeld = useItemHeld;
+    this.prevSpecialHeld = specialHeld;
   }
 
   /** The current frame's input snapshot. */
