@@ -51,8 +51,7 @@ export const LEVELS: LevelDef[] = [
   { key: "level-04", title: "Frozen Summit", theme: "snow", music: "bgm-4", trackTitle: "Hadouken", trackArtist: "Lupus Nocte", parTime: 50, distance: "short", data: level04 },
   { key: "level-05", title: "Shadow Monarch", theme: "shadow", music: "bgm-5", trackTitle: "LEveL", trackArtist: "Solo Leveling", parTime: 85, distance: "medium", data: level05 },
   { key: "level-06", title: "Crimson Shibuya", theme: "crimson", music: "bgm-6", trackTitle: "SPECIALZ", trackArtist: "Jujutsu Kaisen", parTime: 85, distance: "medium", data: level06 },
-  // No soundtrack yet (music: "") — runs silent until a track is added.
-  { key: "level-07", title: "Tropic Lagoon", theme: "lagoon", music: "", trackTitle: "", trackArtist: "", parTime: 90, distance: "medium", data: level07 },
+  { key: "level-07", title: "Tropic Lagoon", theme: "lagoon", music: "bgm-7", trackTitle: "LEveL", trackArtist: "Solo Leveling", parTime: 90, distance: "medium", data: level07 },
 ];
 
 /** Total number of levels. */
