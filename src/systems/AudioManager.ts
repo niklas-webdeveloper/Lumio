@@ -14,6 +14,8 @@ export type SfxName =
   | "extralife"
   | "button"
   | "dash"
+  | "punch"
+  | "blackflash"
   | "walljump"
   | "splash"
   | "swim";
@@ -263,6 +265,18 @@ class AudioManager {
         // Shadow dash: a dark whoosh — noise sweep + a falling growl.
         this.noise(0.22, 0.26, t, 2600, 220);
         this.tone(340, 90, 0.2, "sawtooth", 0.12, t);
+        break;
+      case "punch":
+        // Divergent Fist: a snappy air-cutting jab + a low body thump.
+        this.noise(0.07, 0.2, t, 1900, 700);
+        this.tone(170, 60, 0.11, "square", 0.18, t + 0.01);
+        break;
+      case "blackflash":
+        // Black Flash: a deep crack with a falling growl — heavier than
+        // the dash whoosh, felt as much as heard.
+        this.noise(0.2, 0.32, t, 3600, 140);
+        this.tone(130, 45, 0.28, "sawtooth", 0.22, t);
+        this.tone(75, 32, 0.34, "square", 0.2, t + 0.05);
         break;
       case "walljump":
         // A gripping scuff + upward kick, distinct from the ground jump.

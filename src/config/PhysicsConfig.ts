@@ -111,6 +111,24 @@ export const Physics = {
   /** Interval between shadow after-images spawned along the dash (ms). */
   DASH_TRAIL_INTERVAL_MS: 26,
 
+  // ----- Divergent Fist / Black Flash (Itadori's character ability) -----
+  /** How long the punch animation locks the pose (ms); movement continues. */
+  PUNCH_DURATION_MS: 250,
+  /** Cooldown between punches (ms); mirrored on the special button. */
+  PUNCH_COOLDOWN_MS: 900,
+  /** Reach of a normal punch in front of the fists (px, world space). */
+  PUNCH_RANGE_PX: 78,
+  /** Vertical tolerance of the punch hitbox (± px around the torso). */
+  PUNCH_HEIGHT_PX: 60,
+  /** Every Nth punch is a Black Flash (bigger radius, shake, mini-hop). */
+  BLACK_FLASH_EVERY: 4,
+  /** Reach of the Black Flash blast (px; also hits slightly behind). */
+  BLACK_FLASH_RANGE_PX: 150,
+  /** Vertical tolerance of the Black Flash blast (± px). */
+  BLACK_FLASH_HEIGHT_PX: 100,
+  /** The mini-hop impulse that sells the Black Flash's recoil. */
+  BLACK_FLASH_HOP_VY: -320,
+
   // ----- Wall jump (Foxy's character ability) -----
   /** Max slide speed while pressed against a wall (soft fall). */
   WALL_SLIDE_SPEED: 100,

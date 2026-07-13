@@ -116,6 +116,16 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   /** Accumulator spawning shadow after-images along the dash. */
   private dashTrailAccum = 0;
 
+  // ----- Divergent Fist / Black Flash (Itadori) -----
+  /** True while the punch pose plays (movement continues underneath). */
+  private punching = false;
+  /** Remaining punch pose time (ms). */
+  private punchTimer = 0;
+  /** Remaining cooldown until the next punch (ms). */
+  private punchCooldown = 0;
+  /** Punches thrown so far — every BLACK_FLASH_EVERY-th one is a Black Flash. */
+  private punchCount = 0;
+
   // ----- Wall jump (Foxy) -----
   /** True while sliding down a wall (soft fall, wall-jump ready). */
   private wallSliding = false;
@@ -174,8 +184,13 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     // jumps (hop out) and animation, even though nothing blocks the body.
     const wading = this.inQuicksand && this.body.velocity.y >= 0;
 
-    // Dash cooldown always ticks, even mid-jump or while pounding.
+    // Ability cooldowns always tick, even mid-jump or while pounding.
     if (this.dashCooldown > 0) this.dashCooldown = Math.max(0, this.dashCooldown - deltaMs);
+    if (this.punchCooldown > 0) this.punchCooldown = Math.max(0, this.punchCooldown - deltaMs);
+    if (this.punchTimer > 0) {
+      this.punchTimer -= deltaMs;
+      if (this.punchTimer <= 0) this.punching = false;
+    }
     this.steerLockTimer = Math.max(0, this.steerLockTimer - deltaMs);
 
     // An active shadow dash overrides all normal control until it resolves.
@@ -196,6 +211,17 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       this.updateInvulnerability(deltaMs);
       this.updateStarPower(deltaMs);
       return;
+    }
+    // Special button: Itadori's Divergent Fist. Movement continues normally —
+    // the punch pose just plays over it (works on the ground, in the air and
+    // even while swimming). Every BLACK_FLASH_EVERY-th punch is a Black Flash.
+    if (
+      input.specialJustPressed &&
+      this.char.ability.id === "blackflash" &&
+      this.punchCooldown <= 0 &&
+      !this.groundPounding
+    ) {
+      this.startPunch();
     }
 
     // Swimming replaces the whole grounded/jump/gravity stack.
@@ -288,6 +314,31 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       Physics.RUN_SPEED
     );
     this.setVelocityX(momentum * this.dashDir);
+  }
+
+  // ----- Divergent Fist / Black Flash (Itadori's ability) -----
+
+  /**
+   * Throw a Divergent-Fist jab: the punch animation plays once over normal
+   * movement and the scene resolves the hits ("player-punch"). Every
+   * BLACK_FLASH_EVERY-th punch is a Black Flash — bigger blast plus a small
+   * recoil hop that also works as an air boost.
+   */
+  private startPunch(): void {
+    this.punchCount++;
+    const isFlash = this.punchCount % Physics.BLACK_FLASH_EVERY === 0;
+    this.punching = true;
+    this.punchTimer = Physics.PUNCH_DURATION_MS;
+    this.punchCooldown = Physics.PUNCH_COOLDOWN_MS;
+    if (this.char.attack) {
+      this.anims.play(this.char.attack.animKey, true);
+      this.anims.timeScale = 1;
+    }
+    if (isFlash) {
+      this.setVelocityY(Physics.BLACK_FLASH_HOP_VY);
+      this.isJumpRising = false; // full hop — not cuttable like a jump
+    }
+    this.scene.events.emit("player-punch", this, this.facing, isFlash);
   }
 
   // ----- Wall slide & wall jump (Foxy's ability) -----
@@ -434,11 +485,14 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     }
 
     // Swim pose: rising = jump sheet, sinking = fall sheet, both slowed.
-    this.anims.play(
-      this.body.velocity.y < -30 ? this.char.anims.jump : this.char.anims.fall,
-      true
-    );
-    this.anims.timeScale = 0.6;
+    // (Unless a punch pose is playing — it overrides the swim anims too.)
+    if (!this.punching) {
+      this.anims.play(
+        this.body.velocity.y < -30 ? this.char.anims.jump : this.char.anims.fall,
+        true
+      );
+      this.anims.timeScale = 0.6;
+    }
     this.wasGrounded = false;
   }
 
@@ -539,6 +593,11 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 
   /** Pick and play the right character animation for the current motion. */
   private updateAnimation(grounded: boolean, input: InputState): void {
+    // The punch pose overrides all movement anims while it plays out.
+    if (this.punching) {
+      this.wasGrounded = grounded;
+      return;
+    }
     const vx = this.body.velocity.x;
     const vy = this.body.velocity.y;
     const now = this.scene.time.now;
@@ -1011,8 +1070,13 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 
   /** Remaining dash cooldown as 0..1 (0 = ready) — drives the special button. */
   public get specialCooldownFrac(): number {
-    if (this.char.ability.id !== "shadowdash") return 0;
-    return Phaser.Math.Clamp(this.dashCooldown / Physics.DASH_COOLDOWN_MS, 0, 1);
+    if (this.char.ability.id === "shadowdash") {
+      return Phaser.Math.Clamp(this.dashCooldown / Physics.DASH_COOLDOWN_MS, 0, 1);
+    }
+    if (this.char.ability.id === "blackflash") {
+      return Phaser.Math.Clamp(this.punchCooldown / Physics.PUNCH_COOLDOWN_MS, 0, 1);
+    }
+    return 0;
   }
 
   /** True while sliding down a wall (wall-jump ready). */

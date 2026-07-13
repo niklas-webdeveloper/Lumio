@@ -44,6 +44,7 @@ import { gameState, Progression } from "@/systems/GameState";
 import type { BgTheme } from "@/config/backgrounds";
 import { Physics } from "@/config/PhysicsConfig";
 import { saveState } from "@/systems/SaveState";
+import { FX_SHEETS, FX_ANIMS } from "@/config/characterAssets";
 import { ghostStore, GhostRecorder, GhostPlayer } from "@/systems/Ghost";
 import { audioManager } from "@/systems/AudioManager";
 import { fadeIn, fadeOutThen } from "@/systems/transition";
@@ -727,6 +728,13 @@ export class GameScene extends Phaser.Scene {
         enemy.stomp();
         gameState.addScore(Progression.STOMP_SCORE);
         this.particles.shadowKill(enemy.x, enemy.y);
+        // The victim is visibly "cut down": a fast violet slash swirl.
+        this.spawnFx(FX_ANIMS.slash, FX_SHEETS.slash.key, enemy.x, enemy.y, 0.85, {
+          flipX: this.player.flipX,
+          tintFill: 0x8a5cff,
+          additive: true,
+          frameRate: 24,
+        });
         audioManager.play("stomp");
       }
       return;
@@ -769,6 +777,8 @@ export class GameScene extends Phaser.Scene {
     // Ability + water effects (emitted by Player; fx/sfx live in the scene).
     this.events.off("player-dash", this.onPlayerDash, this);
     this.events.on("player-dash", this.onPlayerDash, this);
+    this.events.off("player-punch", this.onPlayerPunch, this);
+    this.events.on("player-punch", this.onPlayerPunch, this);
     this.events.off("player-dash-trail", this.onPlayerDashTrail, this);
     this.events.on("player-dash-trail", this.onPlayerDashTrail, this);
     this.events.off("player-walljump", this.onPlayerWallJump, this);
@@ -783,9 +793,89 @@ export class GameScene extends Phaser.Scene {
     this.events.on("player-bubble", this.onPlayerBubble, this);
   }
 
-  /** Shadow dash kickoff: violet burst, whoosh, and a tiny camera nudge. */
-  private onPlayerDash(x: number, y: number): void {
+  /**
+   * One-shot effect animation sprite (impact burst/spark/slash); plays once
+   * and destroys itself.
+   */
+  private spawnFx(
+    anim: string,
+    sheetKey: string,
+    x: number,
+    y: number,
+    scale: number,
+    opts: { flipX?: boolean; frameRate?: number; tintFill?: number; additive?: boolean } = {}
+  ): void {
+    const fx = this.add
+      .sprite(x, y, sheetKey, 0)
+      .setScale(scale)
+      .setFlipX(opts.flipX ?? false)
+      .setDepth(Depth.player + 0.5);
+    // tintFill recolors the effect into a glowing silhouette (e.g. the red
+    // slash swirls turned violet for the shadow theme); additive makes it glow.
+    if (opts.tintFill !== undefined) fx.setTintFill(opts.tintFill);
+    if (opts.additive) fx.setBlendMode(Phaser.BlendModes.ADD);
+    fx.play(opts.frameRate ? { key: anim, frameRate: opts.frameRate } : anim);
+    fx.once(Phaser.Animations.Events.ANIMATION_COMPLETE, () => fx.destroy());
+  }
+
+  /**
+   * Divergent Fist (Itadori): defeat stompable enemies in a box in front of
+   * the fists. A Black Flash blasts a much bigger box (even slightly behind),
+   * with red crackle sparks, a camera punch and a red screen tinge.
+   */
+  private onPlayerPunch(p: Player, dir: 1 | -1, isFlash: boolean): void {
+    audioManager.play(isFlash ? "blackflash" : "punch");
+
+    // Impact burst at the fists: blue Divergent-Fist pop, red-spark crackle
+    // (on top of the blue burst) for the Black Flash.
+    const fistX = p.x + dir * 42;
+    this.spawnFx(FX_ANIMS.impact, FX_SHEETS.impact.key, fistX, p.y - 4, isFlash ? 0.9 : 0.55, {
+      flipX: dir === -1,
+    });
+    if (isFlash) {
+      // Slowed to 12fps so the red crackle lingers through the whole moment.
+      this.spawnFx(FX_ANIMS.spark, FX_SHEETS.spark.key, fistX, p.y + 10, 1.3, {
+        flipX: dir === -1,
+        frameRate: 12,
+      });
+      this.cameras.main.shake(140, 0.0045);
+      this.cameras.main.flash(110, 90, 8, 8);
+    }
+
+    const range = isFlash ? Physics.BLACK_FLASH_RANGE_PX : Physics.PUNCH_RANGE_PX;
+    const height = isFlash ? Physics.BLACK_FLASH_HEIGHT_PX : Physics.PUNCH_HEIGHT_PX;
+    const back = isFlash ? 50 : 8; // the blast also catches enemies just behind
+
+    for (const obj of this.enemies.getChildren()) {
+      const enemy = obj as Enemy;
+      if (!enemy.active || !enemy.canDamage() || !enemy.stompable) continue;
+      const dx = (enemy.x - p.x) * dir; // >0 = in front, regardless of facing
+      if (dx < -back || dx > range) continue;
+      if (Math.abs(enemy.y - p.y) > height) continue;
+      enemy.stomp();
+      gameState.addScore(Progression.STOMP_SCORE);
+      this.spawnFx(
+        isFlash ? FX_ANIMS.spark : FX_ANIMS.impact,
+        isFlash ? FX_SHEETS.spark.key : FX_SHEETS.impact.key,
+        enemy.x,
+        enemy.y,
+        isFlash ? 1.0 : 0.7,
+        { flipX: dir === -1 }
+      );
+      audioManager.play("stomp");
+    }
+  }
+
+  /** Shadow dash kickoff: violet burst, whoosh, and a tiny camera nudge —
+   *  plus a violet slash swirl ripping open at the launch point (the Itadori
+   *  sheet's circular slash, recolored into the shadow theme). */
+  private onPlayerDash(x: number, y: number, dir: 1 | -1): void {
     this.particles.dashBurst(x, y);
+    this.spawnFx(FX_ANIMS.slash, FX_SHEETS.slash.key, x + dir * 24, y - 2, 1.0, {
+      flipX: dir === -1,
+      tintFill: 0x9d5cff,
+      additive: true,
+    });
     audioManager.play("dash");
     this.cameras.main.shake(70, 0.0016);
   }

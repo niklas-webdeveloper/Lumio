@@ -30,11 +30,27 @@ import jinwooFallUrl from "../../character-jinwoo/fall.png";
 import jinwooLandUrl from "../../character-jinwoo/land.png";
 import jinwooRunJumpUrl from "../../character-jinwoo/runjump.png";
 import jinwooPortraitUrl from "../../character-jinwoo/portrait.png";
+// Itadori pixel art by BelugaBanaple (Jujutsu Kaisen JUS fan sheet) — sheets
+// generated into `character-itadori/` by scripts/build-itadori-character.py
+// (same 128px cell layout, feet on y=120, facing right unflipped). The fx_*
+// sheets are effect overlays (impact bursts/slashes), centered in the cell.
+import itadoriIdleUrl from "../../character-itadori/idle.png";
+import itadoriRunUrl from "../../character-itadori/run.png";
+import itadoriDashUrl from "../../character-itadori/dash.png";
+import itadoriJumpUrl from "../../character-itadori/jump.png";
+import itadoriFallUrl from "../../character-itadori/fall.png";
+import itadoriLandUrl from "../../character-itadori/land.png";
+import itadoriRunJumpUrl from "../../character-itadori/runjump.png";
+import itadoriPunchUrl from "../../character-itadori/punch.png";
+import itadoriFxImpactUrl from "../../character-itadori/fx_impact.png";
+import itadoriFxSparkUrl from "../../character-itadori/fx_spark.png";
+import itadoriFxSlashUrl from "../../character-itadori/fx_slash.png";
+import itadoriPortraitUrl from "../../character-itadori/portrait.png";
 
 /** All sheets use a uniform 128×128 frame; Phaser slices them row-major. */
 export const HERO_FRAME = 128;
 
-export type CharacterId = "lumio" | "fox" | "jinwoo";
+export type CharacterId = "lumio" | "fox" | "jinwoo" | "itadori";
 
 /** Sprite-sheet definition: load key, source URL, and frame count. */
 interface SheetDef {
@@ -47,7 +63,7 @@ interface SheetDef {
 type AnimSlot = "idle" | "run" | "jump" | "fall" | "land" | "dash" | "runjump";
 
 /** Unique character ability (shown in the shop, wired up by the Player). */
-export type AbilityId = "allround" | "walljump" | "shadowdash";
+export type AbilityId = "allround" | "walljump" | "shadowdash" | "blackflash";
 
 export interface AbilityDef {
   id: AbilityId;
@@ -91,6 +107,9 @@ export interface CharacterDef {
   poleHop: { key: string; frame: number };
   /** Static grip pose while wall-sliding (wall-jump ability only). */
   wallSlide?: { key: string; frame: number };
+  /** Attack animation (punch ability only): plays once over normal movement.
+   *  The sheet must also be listed in extraSheets so it gets loaded. */
+  attack?: { animKey: string; sheetKey: string; frames: number; frameRate: number };
 }
 
 const animKeys = (id: CharacterId): Record<AnimSlot, string> => ({
@@ -136,6 +155,37 @@ const jinwooSheets: Record<AnimSlot, SheetDef> = {
   dash: jinwooRunSheet, // no dedicated dash art — the run cycle at a higher rate
   runjump: { key: "jinwoo_runjump", url: jinwooRunJumpUrl, frames: 4 },
 };
+
+const itadoriRunSheet: SheetDef = { key: "itadori_run", url: itadoriRunUrl, frames: 8 };
+const itadoriSheets: Record<AnimSlot, SheetDef> = {
+  idle: { key: "itadori_idle", url: itadoriIdleUrl, frames: 4 },
+  run: itadoriRunSheet,
+  jump: { key: "itadori_jump", url: itadoriJumpUrl, frames: 2 },
+  fall: { key: "itadori_fall", url: itadoriFallUrl, frames: 2 },
+  land: { key: "itadori_land", url: itadoriLandUrl, frames: 2 },
+  // The only character with dedicated dash art (lunging, fire-trail fists).
+  dash: { key: "itadori_dash", url: itadoriDashUrl, frames: 2 },
+  runjump: { key: "itadori_runjump", url: itadoriRunJumpUrl, frames: 4 },
+};
+
+/**
+ * Effect sheets from the Itadori JUS sheet, usable by any character (they are
+ * loaded globally like all hero sheets): a blue impact explosion, the red
+ * Black-Flash spark bursts, and red circular slash swirls. Frames are centered
+ * in their 128px cell (impact effects anchor on their center, not a feet line).
+ */
+export const FX_SHEETS = {
+  impact: { key: "fx_impact", url: itadoriFxImpactUrl, frames: 6 },
+  spark: { key: "fx_spark", url: itadoriFxSparkUrl, frames: 4 },
+  slash: { key: "fx_slash", url: itadoriFxSlashUrl, frames: 4 },
+} as const;
+
+/** Global effect animation keys (registered in registerHeroAnimations). */
+export const FX_ANIMS = {
+  impact: "fx-impact",
+  spark: "fx-spark",
+  slash: "fx-slash",
+} as const;
 
 export const CHARACTERS: Record<CharacterId, CharacterDef> = {
   lumio: {
@@ -205,6 +255,34 @@ export const CHARACTERS: Record<CharacterId, CharacterDef> = {
     poleGrab: { key: jinwooSheets.idle.key, frame: 0 },
     poleHop: { key: jinwooSheets.jump.key, frame: 0 },
   },
+  itadori: {
+    id: "itadori",
+    name: "Itadori",
+    tagline: "Der Schüler von Jujutsu High mit vernichtender Schlagkraft.",
+    ability: {
+      id: "blackflash",
+      name: "Divergente Faust",
+      desc: "Ein blitzschneller Schlag, der Gegner vor ihm zerschmettert — und jeder 4. Treffer zündet einen Schwarzen Blitz mit gewaltigem Radius.",
+      hint: "Taste C · Special-Button",
+      color: "#e23b3b",
+      active: true,
+    },
+    price: 450,
+    pixelArt: true,
+    portrait: { key: "itadori_portrait", url: itadoriPortraitUrl },
+    sheets: itadoriSheets,
+    extraSheets: [
+      { key: "itadori_punch", url: itadoriPunchUrl, frames: 4 },
+      FX_SHEETS.impact,
+      FX_SHEETS.spark,
+      FX_SHEETS.slash,
+    ],
+    anims: animKeys("itadori"),
+    frameRates: { idle: 6, run: 14, jump: 10, fall: 8, land: 14, dash: 12, runjump: 12 },
+    poleGrab: { key: itadoriSheets.idle.key, frame: 0 },
+    poleHop: { key: itadoriSheets.jump.key, frame: 0 },
+    attack: { animKey: "itadori-punch", sheetKey: "itadori_punch", frames: 4, frameRate: 16 },
+  },
 };
 
 export const CHARACTER_LIST: CharacterDef[] = Object.values(CHARACTERS);
@@ -247,5 +325,30 @@ export function registerHeroAnimations(scene: Phaser.Scene): void {
         repeat,
       });
     }
+    // Attack animation (plays once; the Player returns to movement anims).
+    if (char.attack && !scene.anims.exists(char.attack.animKey)) {
+      scene.anims.create({
+        key: char.attack.animKey,
+        frames: scene.anims.generateFrameNumbers(char.attack.sheetKey, {
+          start: 0,
+          end: char.attack.frames - 1,
+        }),
+        frameRate: char.attack.frameRate,
+        repeat: 0,
+      });
+    }
+  }
+  // Global effect animations (impact bursts/slashes; play once, then destroy).
+  for (const fx of Object.keys(FX_SHEETS) as Array<keyof typeof FX_SHEETS>) {
+    if (scene.anims.exists(FX_ANIMS[fx])) continue;
+    scene.anims.create({
+      key: FX_ANIMS[fx],
+      frames: scene.anims.generateFrameNumbers(FX_SHEETS[fx].key, {
+        start: 0,
+        end: FX_SHEETS[fx].frames - 1,
+      }),
+      frameRate: 18,
+      repeat: 0,
+    });
   }
 }
