@@ -75,7 +75,7 @@ const Depth = {
 } as const;
 
 /** Max simultaneously alive summoned minions in a boss arena. */
-const BOSS_MINION_CAP = 3;
+const BOSS_MINION_CAP = 2;
 /** Score for felling a boss. */
 const BOSS_SCORE = 1000;
 
@@ -628,14 +628,17 @@ export class GameScene extends Phaser.Scene {
     } else if (id === "kraken") {
       // The pool the Kraken lurks in is the arena's (only) water zone.
       const pool = this.waterZones[0];
+      const shoreTopY = pool ? pool.y - 8 : y - 64;
       this.boss = new KrakenBoss(this, x, y, {
         player: this.player,
         orbs: this.bossOrbs,
         zones: this.bossZones,
-        groundYAt: (gx) => this.groundYAt(gx),
+        // Tentacles root on the GROUND, never on the raised ledges/plank —
+        // scanning below the shore line keeps those perches genuinely safe.
+        groundYAt: (gx) => this.groundYAt(gx, shoreTopY + 2),
         poolLeft: pool ? pool.x : x - 120,
         poolRight: pool ? pool.right : x + 120,
-        shoreTopY: pool ? pool.y - 8 : y - 64,
+        shoreTopY,
       });
     } else {
       return;
@@ -807,10 +810,11 @@ export class GameScene extends Phaser.Scene {
     this.time.delayedCall(COMPLETE_DELAY + 700, onDone);
   }
 
-  /** World y of the first solid ground line under a world x. */
-  private groundYAt(x: number): number {
+  /** World y of the first solid ground line under a world x (scanning down
+   *  from `fromY`, so callers can skip platforms above a floor line). */
+  private groundYAt(x: number, fromY = 16): number {
     const terrain = this.level.terrain;
-    for (let y = 16; y < this.level.heightPx; y += 16) {
+    for (let y = fromY; y < this.level.heightPx; y += 16) {
       const tile = terrain.getTileAtWorldXY(x, y);
       if (tile && tile.collides) return tile.pixelY;
     }
@@ -1588,6 +1592,10 @@ export class GameScene extends Phaser.Scene {
         this.boss ? { x: this.boss.x, y: this.boss.y } : null,
       bossOrbCount: () => this.bossOrbs.getLength(),
       tentacleCount: () => this.bossZones.getLength(),
+      tentacleRoots: () =>
+        this.bossZones
+          .getChildren()
+          .map((t) => ({ x: (t as Tentacle).x, y: (t as Tentacle).y })),
       hitsTaken: () => gameState.hitsTaken,
       hurtBoss: () => this.boss?.hurt() ?? false,
       strikeBoss: (amount = 1) => this.boss?.strike(amount) ?? false,

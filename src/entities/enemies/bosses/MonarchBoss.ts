@@ -24,10 +24,12 @@ type MonarchState =
   | "recover";
 
 const HP = 6;
-/** Pattern tuning per phase (phase 2 = enraged at half health). */
+/** Pattern tuning per phase (phase 2 = enraged at half health). Paced so the
+ *  player always has an answer: slow, readable bolts, a long dash telegraph
+ *  and generous punish windows. */
 const TUNING = {
-  1: { bolts: 3, boltGapMs: 620, boltSpeed: 225, dashSpeed: 430, stunMs: 3600 },
-  2: { bolts: 5, boltGapMs: 400, boltSpeed: 265, dashSpeed: 520, stunMs: 3000 },
+  1: { bolts: 3, boltGapMs: 780, boltSpeed: 195, dashSpeed: 400, stunMs: 4600, telegraphMs: 1100 },
+  2: { bolts: 4, boltGapMs: 560, boltSpeed: 230, dashSpeed: 470, stunMs: 3900, telegraphMs: 900 },
 } as const;
 /** Violet shades for the dash after-images (matches the shadow-army look). */
 const DASH_SHADES = [0x9d5cff, 0x6a2fd8, 0x4b1f9e];
@@ -155,7 +157,7 @@ export class MonarchBoss extends Boss {
         break;
       }
       case "telegraph": {
-        this.stateT = 850;
+        this.stateT = this.tuning.telegraphMs;
         this.anims.stop();
         this.setFrame(MONARCH_FRAME.swordRaised);
         audioManager.play("bossroar");
@@ -170,7 +172,7 @@ export class MonarchBoss extends Boss {
         break;
       }
       case "dash": {
-        this.stateT = 2400; // safety ceiling; normally ends at the wall
+        this.stateT = 3200; // safety ceiling; normally ends at the wall
         this.dashDir = this.cfg.player.x < this.x ? -1 : 1;
         this.setFlipX(this.dashDir === -1);
         this.setFrame(MONARCH_FRAME.swordLow);

@@ -4,7 +4,7 @@ import type { Player } from "@/entities/Player";
 import { Block, BlockEvents, type RewardKind } from "./Block";
 
 /** How long the block stays spent before it re-arms with a fresh item. */
-const RESPAWN_MS = 24_000;
+const RESPAWN_MS = 18_000;
 
 /**
  * The boss-arena supply block: a "?" block that always dispenses something

@@ -34,10 +34,12 @@ const HP = 6;
 /** Ballistic flight time of an ink lob (s) and its projectile gravity. */
 const LOB_T = 1.05;
 const LOB_GRAVITY = 900;
-/** Pattern tuning per phase (phase 2 = enraged at half health). */
+/** Pattern tuning per phase (phase 2 = enraged at half health). Paced so the
+ *  player never feels cornered: unhurried lobs, long tentacle warnings with
+ *  wide gaps between the strike spots, and generous punish windows. */
 const TUNING = {
-  1: { lobs: 3, lobGapMs: 680, tentacles: 2, warnMs: 700, stunMs: 3600 },
-  2: { lobs: 5, lobGapMs: 470, tentacles: 3, warnMs: 550, stunMs: 3000 },
+  1: { lobs: 3, lobGapMs: 850, tentacles: 2, warnMs: 950, stunMs: 4600 },
+  2: { lobs: 4, lobGapMs: 620, tentacles: 3, warnMs: 780, stunMs: 3900 },
 } as const;
 
 /**
@@ -139,8 +141,13 @@ export class KrakenBoss extends Boss {
       case "tentacles": {
         const t = this.tuning;
         const px = this.cfg.player.x;
-        // One under the player, the rest bracketing the escape routes.
-        const spots = [px, px - 104, px + 104].slice(0, t.tentacles);
+        // Never box the player in: one under them plus one far to a single
+        // side — only the enrage phase strikes both sides, and always with
+        // gaps wide enough to run through.
+        const spots =
+          t.tentacles >= 3
+            ? [px, px - 170, px + 170]
+            : [px, px + (Math.random() < 0.5 ? -170 : 170)];
         for (const x of spots) {
           const tentacle = new Tentacle(this.scene, x, this.cfg.groundYAt(x), {
             warnMs: t.warnMs,
