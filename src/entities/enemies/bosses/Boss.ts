@@ -19,12 +19,17 @@ export const BossEvents = {
   Phase: "boss-phase",
 } as const;
 
+/** Cooldown between ability/item hits, so multi-hit bursts (fire volley,
+ *  star contact) don't melt the health bar in one go. */
+const STRIKE_IFRAMES_MS = 700;
+
 /**
- * Base for arena bosses: multi-hit health with an explicit VULNERABLE window
- * (outside it, hits clank off), a two-phase enrage at half health, and the
- * defeat dissolve. Extends Enemy for the shared physics/aura plumbing but is
- * deliberately kept OUT of GameScene's `enemies` group — bosses have their own
- * damage rules (no one-hit stomps, dashes phase through, etc.).
+ * Base for arena bosses: multi-hit health with two ways in — ability/item
+ * STRIKES connect any time (gated by short i-frames), while plain stomps only
+ * count in the explicit VULNERABLE window (outside it they clank off). Enrage
+ * at half health, defeat dissolve at 0. Extends Enemy for the shared
+ * physics/aura plumbing but is deliberately kept OUT of GameScene's `enemies`
+ * group — bosses have their own damage rules (no one-hit stomps, etc.).
  */
 export abstract class Boss extends Enemy {
   /** Never stomp-killed like a regular enemy (scene bypasses group logic). */
@@ -34,6 +39,8 @@ export abstract class Boss extends Enemy {
   protected hp: number;
   protected phase: 1 | 2 = 1;
   protected vulnerableFlag = false;
+  /** Ability/item hits are ignored until this timestamp (strike i-frames). */
+  private iframesUntil = 0;
 
   constructor(
     scene: Phaser.Scene,
@@ -66,13 +73,39 @@ export abstract class Boss extends Enemy {
   }
 
   /**
-   * Deal 1 damage. Only connects during the vulnerable window — returns false
-   * otherwise (the scene plays an armored "clank" instead). Crossing half
-   * health triggers the enrage phase; reaching 0 starts the defeat dissolve.
+   * A plain stomp hit: only connects during the vulnerable window — returns
+   * false otherwise (the scene plays an armored "clank" instead). Ignores the
+   * strike i-frames, so the punish window always pays out.
    */
   public hurt(): boolean {
     if (!this.active || !this.scene || this.dying || !this.vulnerableFlag) return false;
-    this.hp -= 1;
+    this.applyDamage(1);
+    return true;
+  }
+
+  /**
+   * An ability/item hit (shadow dash, Divergent Fist, fireball, star touch):
+   * connects ANY time the boss is on the field — the special moves are the
+   * way to chip him down between windows. Gated by short i-frames so bursts
+   * count as one hit, and by `hittable()` (e.g. not mid-teleport).
+   */
+  public strike(amount = 1): boolean {
+    if (!this.active || !this.scene || this.dying || !this.hittable()) return false;
+    const now = this.scene.time.now;
+    if (now < this.iframesUntil) return false;
+    this.iframesUntil = now + STRIKE_IFRAMES_MS;
+    this.applyDamage(amount);
+    return true;
+  }
+
+  /** Whether an ability strike can currently land (override: teleporting…). */
+  protected hittable(): boolean {
+    return true;
+  }
+
+  /** Take damage: HUD/FX events, flash, enrage crossing, defeat at 0. */
+  private applyDamage(amount: number): void {
+    this.hp -= amount;
     this.scene.events.emit(BossEvents.Hp, this.hpFrac);
     this.scene.events.emit(
       BossEvents.Hurt,
@@ -86,14 +119,13 @@ export abstract class Boss extends Enemy {
     });
     if (this.hp <= 0) {
       this.defeat();
-      return true;
+      return;
     }
     if (this.phase === 1 && this.hp <= this.maxHp / 2) {
       this.phase = 2;
       this.scene.events.emit(BossEvents.Phase, 2);
       this.onEnrage();
     }
-    return true;
   }
 
   /** Restore the current state's resting tint after a damage flash. */

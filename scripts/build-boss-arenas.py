@@ -87,6 +87,10 @@ class Builder:
             props=[{"name": "kind", "type": "string", "value": kind}],
         )
 
+    def item_block(self, col, row):
+        """The arena supply "?" block: always a combat item, re-arms in-game."""
+        self.obj("itemblock", col * TS + 16, row * TS + 16)
+
     def water(self, c0, c1, surface_row=GROUND):
         self._oid += 1
         y = surface_row * TS + 8
@@ -164,6 +168,9 @@ def build_monarch_arena():
     b.platform(30, 4, 8)
     b.platform(17, 4, 5, PLATE)
 
+    # Supply block under the perch: hit it from the floor for a combat item.
+    b.item_block(19, 8)
+
     b.player(5)
     b.boss("monarch", 30)
     return b
@@ -185,6 +192,9 @@ def build_kraken_arena():
 
     # The plank over the pool: the stomp route onto the slumped head.
     b.platform(23, 4, 6, PLATE)
+
+    # Supply block over the left shore: hit it from the sand for a combat item.
+    b.item_block(8, 7)
 
     b.player(5, top=10)
     b.boss("kraken", 25, top=13)

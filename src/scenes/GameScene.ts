@@ -26,6 +26,7 @@ import { Vulture } from "@/entities/enemies/Vulture";
 import { Bat } from "@/entities/enemies/Bat";
 import { Icicle } from "@/entities/enemies/Icicle";
 import { LuckyBlock } from "@/entities/blocks/LuckyBlock";
+import { ItemBlock } from "@/entities/blocks/ItemBlock";
 import { BrickBlock } from "@/entities/blocks/BrickBlock";
 import {
   Block,
@@ -135,6 +136,8 @@ export class GameScene extends Phaser.Scene {
 
   private failed = false;
   private levelComplete = false;
+  /** Next time star-power contact may chip the boss (slow tick gate). */
+  private starStrikeAt = 0;
 
   // Goal-pole geometry, captured at spawn for the completion slide.
   private beaconFlag?: Phaser.GameObjects.Image;
@@ -155,6 +158,7 @@ export class GameScene extends Phaser.Scene {
     this.waterZones = [];
     this.ghost = undefined;
     this.boss = undefined;
+    this.starStrikeAt = 0;
 
     // DOM HUD + level title card (the UI layer owns the HUD).
     ui.onGameSceneCreate();
@@ -348,6 +352,13 @@ export class GameScene extends Phaser.Scene {
           // Rewards are random now, so block coins are a bonus and no longer
           // count toward the "all coins" star goal.
           const block = new LuckyBlock(this, obj.x, obj.y);
+          block.setDepth(Depth.block);
+          this.blocks.add(block);
+          break;
+        }
+        case "itemblock": {
+          // Boss-arena supply: always a combat item, re-arms after a while.
+          const block = new ItemBlock(this, obj.x, obj.y);
           block.setDepth(Depth.block);
           this.blocks.add(block);
           break;
@@ -638,12 +649,13 @@ export class GameScene extends Phaser.Scene {
   private setupBossWiring(): void {
     const boss = this.boss!;
     this.physics.add.overlap(this.player, boss, () => this.onPlayerTouchBoss());
-    // Player fireballs: connect in the vulnerable window, clank off otherwise.
+    // Player fireballs: an item hit — connects any time (strike i-frames
+    // keep a whole volley from melting the bar in one burst).
     this.physics.add.overlap(this.fireballs, boss, (f) => {
       const ball = f as Fireball;
       if (ball.isDone || boss.isDying) return;
       ball.explode();
-      if (!boss.hurt()) audioManager.play("clank");
+      if (!boss.strike(1)) audioManager.play("clank");
     });
     // Boss projectiles: die on terrain, hurt the player on contact.
     this.physics.add.collider(this.bossOrbs, this.level.terrain, (o) =>
@@ -674,10 +686,32 @@ export class GameScene extends Phaser.Scene {
   }
 
   /** Player↔boss contact: stomps bounce (and connect when vulnerable),
-   *  side contact hurts, the shadow dash phases through. */
+   *  ability/item contact strikes any time, side contact hurts. */
   private onPlayerTouchBoss(): void {
     const boss = this.boss;
     if (!boss?.active || boss.isDying || this.failed || this.levelComplete) return;
+
+    // Shadow dash: phases through AND cuts the boss (an ability strike).
+    if (this.player.isDashing) {
+      if (boss.strike(1)) {
+        this.spawnFx(FX_ANIMS.slash, FX_SHEETS.slash.key, boss.x, boss.y - boss.displayHeight / 2, 1.1, {
+          flipX: this.player.flipX,
+          tintFill: 0x8a5cff,
+          additive: true,
+          frameRate: 24,
+        });
+      }
+      return;
+    }
+
+    // Star power: invincible contact chips the boss down (own slow gate so
+    // hugging him for the full star doesn't trivialize the fight).
+    if (this.player.isStarPowered) {
+      if (this.time.now >= this.starStrikeAt && boss.strike(1)) {
+        this.starStrikeAt = this.time.now + 1200;
+      }
+      return;
+    }
 
     const pb = this.player.body;
     const eb = boss.body;
@@ -691,7 +725,6 @@ export class GameScene extends Phaser.Scene {
       }
       return;
     }
-    if (this.player.isDashing) return; // the shadow dash phases through
     if (boss.canDamage()) this.damagePlayer();
   }
 
@@ -1078,7 +1111,8 @@ export class GameScene extends Phaser.Scene {
       audioManager.play("stomp");
     }
 
-    // The boss too can be punched — but only connects while vulnerable.
+    // The boss too can be punched — an ability strike, so it connects any
+    // time. A Black Flash lands DOUBLE damage (it's the every-4th payoff).
     const boss = this.boss;
     if (boss?.active && !boss.isDying) {
       const bb = boss.body;
@@ -1088,7 +1122,7 @@ export class GameScene extends Phaser.Scene {
         bb.right >= left &&
         bb.left <= right &&
         Math.abs(bb.center.y - p.y) <= height + bb.halfHeight;
-      if (inBox && !boss.hurt()) audioManager.play("clank");
+      if (inBox && !boss.strike(isFlash ? 2 : 1)) audioManager.play("clank");
     }
   }
 
@@ -1556,7 +1590,19 @@ export class GameScene extends Phaser.Scene {
       tentacleCount: () => this.bossZones.getLength(),
       hitsTaken: () => gameState.hitsTaken,
       hurtBoss: () => this.boss?.hurt() ?? false,
+      strikeBoss: (amount = 1) => this.boss?.strike(amount) ?? false,
       activateStar: (ms = 600000) => this.player.activateStar(ms),
+      itemBlocks: () =>
+        this.blocks
+          .getChildren()
+          .filter((b): b is ItemBlock => b instanceof ItemBlock)
+          .map((b) => ({ x: b.x, y: b.y, spent: b.isSpent })),
+      hitItemBlock: () => {
+        const b = this.blocks
+          .getChildren()
+          .find((c): c is ItemBlock => c instanceof ItemBlock);
+        b?.hitFromBelow(this.player);
+      },
       forceVulnerable: () => {
         const b = this.boss as unknown as { vulnerableFlag?: boolean } | undefined;
         if (b) b.vulnerableFlag = true;

@@ -70,6 +70,11 @@ export class MonarchBoss extends Boss {
     this.scene.cameras.main.flash(160, 80, 20, 120);
   }
 
+  /** Mid-teleport he is shadow — ability strikes pass through. */
+  protected override hittable(): boolean {
+    return !this.teleporting;
+  }
+
   override preUpdate(time: number, delta: number): void {
     super.preUpdate(time, delta);
     if (this.dying || this.teleporting) return;
