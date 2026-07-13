@@ -44,6 +44,8 @@ class GameState {
   levelCoinTotal = 0;
   /** Special item in the slot, usable on demand (Mario-Kart style). */
   heldItem: HeldItem = null;
+  /** Hits taken in the current level attempt (drives the boss "no damage" star). */
+  hitsTaken = 0;
 
   /** Begin a brand-new game, optionally continuing from a level index. */
   startNewGame(levelIndex = 0, mode: GameMode = "levels"): void {
@@ -70,6 +72,7 @@ class GameState {
     this.timeElapsed = 0;
     this.levelCoins = 0;
     this.heldItem = null;
+    this.hitsTaken = 0;
   }
 
   /**

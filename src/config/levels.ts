@@ -5,14 +5,21 @@ import level04 from "@/levels/level-04.json";
 import level05 from "@/levels/level-05.json";
 import level06 from "@/levels/level-06.json";
 import level07 from "@/levels/level-07.json";
+import level08 from "@/levels/level-08.json";
+import level09 from "@/levels/level-09.json";
 import type { BgTheme } from "@/config/backgrounds";
 
 /**
  * Rough level length class. "short" is the classic ~130-tile stage; "medium"
- * is noticeably longer (~200 tiles) but not a slog. The level select groups
- * levels by distance, and the marathon only runs the short stages.
+ * is noticeably longer (~200 tiles) but not a slog. "boss" is a sealed arena
+ * stage: no coins, no goal pole — defeating the boss ends the level. The
+ * level select groups levels by distance, and the marathon only runs the
+ * short stages (so boss stages never enter the marathon).
  */
-export type LevelDistance = "short" | "medium";
+export type LevelDistance = "short" | "medium" | "boss";
+
+/** The bosses that exist (selects the entity class in GameScene). */
+export type BossId = "monarch" | "kraken";
 
 /**
  * Level manifest — the ordered list of levels the game plays through.
@@ -40,6 +47,8 @@ export interface LevelDef {
   parTime: number;
   /** Length class (groups the level select; the marathon runs "short" only). */
   distance: LevelDistance;
+  /** Boss stages only: which boss guards this arena. */
+  boss?: BossId;
   /** Raw Tiled JSON map data. */
   data: unknown;
 }
@@ -52,6 +61,11 @@ export const LEVELS: LevelDef[] = [
   { key: "level-05", title: "Shadow Monarch", theme: "shadow", music: "bgm-5", trackTitle: "LEveL", trackArtist: "Solo Leveling", parTime: 85, distance: "medium", data: level05 },
   { key: "level-06", title: "Crimson Shibuya", theme: "crimson", music: "bgm-6", trackTitle: "SPECIALZ", trackArtist: "Jujutsu Kaisen", parTime: 85, distance: "medium", data: level06 },
   { key: "level-07", title: "Tropic Lagoon", theme: "lagoon", music: "bgm-7", trackTitle: "LEveL", trackArtist: "Solo Leveling", parTime: 90, distance: "medium", data: level07 },
+  // Boss stages: the endgame gauntlet after the world tour. Par times are the
+  // speed-star goal for the whole fight; the coin star is replaced by the
+  // "no damage" star (arenas have no coins).
+  { key: "level-08", title: "Monarchs Thron", theme: "shadow", music: "bgm-5", trackTitle: "LEveL", trackArtist: "Solo Leveling", parTime: 75, distance: "boss", boss: "monarch", data: level08 },
+  { key: "level-09", title: "Krakenbucht", theme: "lagoon", music: "bgm-7", trackTitle: "LEveL", trackArtist: "Solo Leveling", parTime: 75, distance: "boss", boss: "kraken", data: level09 },
 ];
 
 /** Total number of levels. */

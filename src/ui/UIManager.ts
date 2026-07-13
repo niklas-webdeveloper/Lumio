@@ -51,6 +51,10 @@ export interface CompleteData {
   /** Coins collected this run / total collectible in the level. */
   coins: number;
   coinTotal: number;
+  /** True on boss stages (arena fights: no coins, different star goals). */
+  bossStage?: boolean;
+  /** Boss stages: whether the fight was won without taking a hit. */
+  noDamage?: boolean;
 }
 
 /** Data passed to the marathon results screen. */
@@ -673,23 +677,28 @@ class UIManager {
     this.screens.levels = s;
   }
 
-  /** One level card (shared by both distance groups). */
+  /** One level card (shared by all distance groups). */
   private levelCard(i: number, unlocked: number): HTMLElement {
     const lvl = LEVELS[i];
     const locked = i > unlocked;
+    const boss = lvl.distance === "boss";
     const card = el(
       "div",
-      `level-card${locked ? " locked" : ""}${lvl.distance === "medium" ? " medium" : ""}`
+      `level-card${locked ? " locked" : ""}${lvl.distance === "medium" ? " medium" : ""}${boss ? " boss" : ""}`
     );
     const best = saveState.getBestTime(i);
+    // Boss arenas have no coins — show the skull marker instead of a 0/0.
     const meta =
       `<div class="lvl-meta">` +
       `<span>${icoTag("timer")}${best !== null ? fmtTimePrecise(best) : "-:--"}</span>` +
-      `<span>${icoTag("coin")}${saveState.getBestCoins(i)}/${countLevelCoins(lvl)}</span>` +
+      (boss
+        ? `<span>☠ Bosskampf</span>`
+        : `<span>${icoTag("coin")}${saveState.getBestCoins(i)}/${countLevelCoins(lvl)}</span>`) +
       `</div>`;
+    const num = boss ? "☠" : `${i + 1}`;
     card.innerHTML = locked
       ? `<div class="lock-badge"><img src="${UI}/lock.png" alt="" draggable="false"></div><div class="lvl-name">${lvl.title}</div>`
-      : `<div class="lvl-num">${i + 1}</div>${starsRow(saveState.getLevelStars(i))}${meta}<div class="lvl-name">${lvl.title}</div>`;
+      : `<div class="lvl-num">${num}</div>${starsRow(saveState.getLevelStars(i))}${meta}<div class="lvl-name">${lvl.title}</div>`;
     card.onmouseenter = () => this.selectLevel(i);
     card.onclick = () => this.tryPlay(i);
     return card;
@@ -707,6 +716,7 @@ class UIManager {
     const groupDefs: Array<{ distance: LevelDistance; title: string; sub: string }> = [
       { distance: "short", title: "KURZE DISTANZ", sub: "die klassischen Stages · auch im Marathon" },
       { distance: "medium", title: "MITTLERE DISTANZ", sub: "längere Stages — mehr Strecke, mehr Coins" },
+      { distance: "boss", title: "BOSSKÄMPFE", sub: "Arena-Duelle mit Phasen — Sterne für No-Hit und Speed" },
     ];
     for (const def of groupDefs) {
       const indices = LEVELS.map((l, i) => ({ l, i })).filter(
@@ -764,6 +774,7 @@ class UIManager {
   onGameSceneCreate(): void {
     this.closeOverlays();
     this.hud.show();
+    this.hud.hideBoss(); // boss stages re-arm it when the boss spawns
     this.setContext("game");
     // The special button follows the played character's active ability.
     this.touch.setSpecialAbility(CHARACTERS[saveState.getSelectedCharacter()].ability);
@@ -774,6 +785,20 @@ class UIManager {
   /** Mirror the ability cooldown onto the mobile special button (per frame). */
   setSpecialCooldown(frac: number): void {
     this.touch.setSpecialCooldown(frac);
+  }
+
+  // ---------- Boss bar bridge (GameScene drives it on boss stages) ----------
+
+  showBossBar(name: string): void {
+    this.hud.showBoss(name);
+  }
+
+  setBossHp(frac: number): void {
+    this.hud.setBossHp(frac);
+  }
+
+  hideBossBar(): void {
+    this.hud.hideBoss();
   }
 
   // ---------- HUD bridge (GameScene calls these every frame / per pickup) ----------
@@ -980,7 +1005,13 @@ class UIManager {
     this.hud.hide();
     const o = this.overlay(true);
     const p = el("div", "panel wide");
-    p.append(el("div", "panel-title", data.lastLevel ? "YOU WIN!" : "LEVEL COMPLETE"));
+    p.append(
+      el(
+        "div",
+        "panel-title",
+        data.lastLevel ? "YOU WIN!" : data.bossStage ? "BOSS BESIEGT!" : "LEVEL COMPLETE"
+      )
+    );
     p.insertAdjacentHTML("beforeend", starsRow(data.stars, true));
 
     // One line per star: what it's for and whether this run earned it.
@@ -990,10 +1021,14 @@ class UIManager {
       `<span>${label}</span>` +
       `</div>`;
     const critList = el("div", "crit-list");
-    critList.innerHTML =
-      crit(true, "Level cleared") +
-      crit(data.allCoins, `All coins &nbsp;·&nbsp; ${data.coins}/${data.coinTotal}`) +
-      crit(data.underPar, `Beat ${fmtTime(data.parTime)} &nbsp;·&nbsp; ${fmtTimePrecise(data.timeSec)}`);
+    // Boss stages swap the coin star for the no-damage star.
+    critList.innerHTML = data.bossStage
+      ? crit(true, "Boss besiegt") +
+        crit(data.noDamage === true, "Ohne Treffer überstanden") +
+        crit(data.underPar, `Beat ${fmtTime(data.parTime)} &nbsp;·&nbsp; ${fmtTimePrecise(data.timeSec)}`)
+      : crit(true, "Level cleared") +
+        crit(data.allCoins, `All coins &nbsp;·&nbsp; ${data.coins}/${data.coinTotal}`) +
+        crit(data.underPar, `Beat ${fmtTime(data.parTime)} &nbsp;·&nbsp; ${fmtTimePrecise(data.timeSec)}`);
     p.appendChild(critList);
 
     const timeBox =

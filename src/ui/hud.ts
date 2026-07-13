@@ -53,6 +53,15 @@ export class Hud {
     right.append(level, time, tools);
 
     hud.append(left, right);
+
+    // Boss health bar (boss stages only): name + a draining fill, centered
+    // under the HUD strip. Lives inside the HUD so it hides along with it.
+    const bossBar = el("div", "boss-bar hidden");
+    bossBar.innerHTML =
+      `<div class="bb-name" id="hud-boss-name"></div>` +
+      `<div class="bb-track"><i id="hud-boss-fill"></i></div>`;
+    hud.appendChild(bossBar);
+
     root.appendChild(hud);
     this.element = hud;
     this.els = {
@@ -66,7 +75,30 @@ export class Hud {
       item: hud.querySelector("#hud-item") as HTMLElement,
       level: hud.querySelector("#hud-level") as HTMLElement,
       time: hud.querySelector("#hud-time") as HTMLElement,
+      bossBar,
+      bossName: hud.querySelector("#hud-boss-name") as HTMLElement,
+      bossFill: hud.querySelector("#hud-boss-fill") as HTMLElement,
     };
+  }
+
+  /** Show the boss bar (full) with the boss's name. */
+  showBoss(name: string): void {
+    this.els.bossName.textContent = name;
+    this.els.bossFill.style.width = "100%";
+    this.els.bossBar.classList.remove("hidden");
+  }
+
+  /** Drain the boss bar to the given fraction (with a hit flash). */
+  setBossHp(frac: number): void {
+    this.els.bossFill.style.width = `${Math.max(0, Math.min(1, frac)) * 100}%`;
+    const bar = this.els.bossBar;
+    bar.classList.remove("hit");
+    void bar.offsetWidth; // restart the flash on rapid hits
+    bar.classList.add("hit");
+  }
+
+  hideBoss(): void {
+    this.els.bossBar.classList.add("hidden");
   }
 
   get hidden(): boolean {

@@ -40,8 +40,8 @@ const DEFAULT_SAVE = {
   selectedCharacter: "lumio",
 };
 
-// Number of levels the leaderboard tracks (level-01 .. level-06).
-const LEVEL_COUNT = 6;
+// Number of levels the leaderboard tracks (level-01 .. level-09, incl. bosses).
+const LEVEL_COUNT = 9;
 
 // Collect one player's save into the leaderboard accumulator (per-level times
 // under numeric keys, marathon runs under "marathon").

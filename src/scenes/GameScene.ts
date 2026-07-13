@@ -1,7 +1,7 @@
 import Phaser from "phaser";
 import { SceneKeys, TextureKeys } from "@/config/AssetKeys";
 import { TileGid } from "@/config/Tiles";
-import { getLevel, LEVEL_COUNT, MARATHON_LEVEL_COUNT } from "@/config/levels";
+import { getLevel, LEVEL_COUNT, MARATHON_LEVEL_COUNT, type BossId } from "@/config/levels";
 import { Player } from "@/entities/Player";
 import { Coin } from "@/entities/Coin";
 import { Pipe } from "@/entities/Pipe";
@@ -9,6 +9,13 @@ import { Growcap } from "@/entities/powerups/Growcap";
 import { ItemPickup } from "@/entities/powerups/ItemPickup";
 import { Fireball } from "@/entities/Fireball";
 import { Enemy } from "@/entities/enemies/Enemy";
+import { Boss, BossEvents } from "@/entities/enemies/bosses/Boss";
+import { MonarchBoss } from "@/entities/enemies/bosses/MonarchBoss";
+import { KrakenBoss } from "@/entities/enemies/bosses/KrakenBoss";
+import { BossOrb } from "@/entities/enemies/bosses/BossOrb";
+import { Tentacle } from "@/entities/enemies/bosses/Tentacle";
+import { ShadowBeast } from "@/entities/enemies/ShadowBeast";
+import { BOSS_NAMES } from "@/config/bossArt";
 import { Plodder } from "@/entities/enemies/Plodder";
 import { ShadowSoldier } from "@/entities/enemies/ShadowSoldier";
 import { LavaGolem } from "@/entities/enemies/LavaGolem";
@@ -60,10 +67,16 @@ const Depth = {
   beacon: 5,
   pipe: 6,
   enemy: 8, // in front of pipes
+  boss: 8.5, // arena boss, in front of its minions
   ghost: 9.5, // best-run replay, just behind the live player
   player: 10,
   water: 11, // translucent water overlay — the player reads as submerged
 } as const;
+
+/** Max simultaneously alive summoned minions in a boss arena. */
+const BOSS_MINION_CAP = 3;
+/** Score for felling a boss. */
+const BOSS_SCORE = 1000;
 
 /** Delay (ms) before resolving a death or a completed level. */
 const DEATH_DELAY = 900;
@@ -113,6 +126,12 @@ export class GameScene extends Phaser.Scene {
   private ghostRecorder?: GhostRecorder;
   /** Plays back the stored best run as a translucent ghost. */
   private ghost?: GhostPlayer;
+  /** The arena boss (boss stages only). */
+  private boss?: Boss;
+  /** Boss projectiles (pop on terrain and on the player). */
+  private bossOrbs!: Phaser.GameObjects.Group;
+  /** Boss area hazards (tentacles) — overlap-only, no terrain collision. */
+  private bossZones!: Phaser.GameObjects.Group;
 
   private failed = false;
   private levelComplete = false;
@@ -135,6 +154,7 @@ export class GameScene extends Phaser.Scene {
     this.warpPoints.clear();
     this.waterZones = [];
     this.ghost = undefined;
+    this.boss = undefined;
 
     // DOM HUD + level title card (the UI layer owns the HUD).
     ui.onGameSceneCreate();
@@ -162,6 +182,8 @@ export class GameScene extends Phaser.Scene {
     this.plodders = this.add.group();
     this.icicles = this.add.group();
     this.pipes = this.add.group();
+    this.bossOrbs = this.add.group();
+    this.bossZones = this.add.group();
 
     this.inputManager = new InputManager(this);
     this.player = new Player(this, this.level.playerSpawn.x, this.level.playerSpawn.y);
@@ -419,6 +441,11 @@ export class GameScene extends Phaser.Scene {
             new Phaser.Math.Vector2(obj.x, obj.y)
           );
           break;
+        case "boss":
+          // Boss stages: the boss replaces the goal pole — defeating it
+          // completes the level (see onBossDefeated).
+          this.spawnBoss(String(obj.properties.kind ?? ""), obj.x, obj.y);
+          break;
         case "water":
           // Swimmable zone: physics rect + the translucent lagoon visuals.
           this.addWaterZone(
@@ -569,6 +596,192 @@ export class GameScene extends Phaser.Scene {
         });
       },
     });
+  }
+
+  // ----- Boss stages -----
+
+  /**
+   * Spawn the arena boss (boss stages only). The boss replaces the goal pole:
+   * its defeat completes the level. All cross-cutting concerns (HUD bar,
+   * minions, FX, victory) run over scene events — see setupBossWiring.
+   */
+  private spawnBoss(kind: string, x: number, y: number): void {
+    const level = getLevel(gameState.levelIndex)!;
+    const id = (kind || level.boss || "") as BossId;
+    if (id === "monarch") {
+      this.boss = new MonarchBoss(this, x, y, {
+        player: this.player,
+        orbs: this.bossOrbs,
+      });
+      this.physics.add.collider(this.boss, this.level.terrain);
+    } else if (id === "kraken") {
+      // The pool the Kraken lurks in is the arena's (only) water zone.
+      const pool = this.waterZones[0];
+      this.boss = new KrakenBoss(this, x, y, {
+        player: this.player,
+        orbs: this.bossOrbs,
+        zones: this.bossZones,
+        groundYAt: (gx) => this.groundYAt(gx),
+        poolLeft: pool ? pool.x : x - 120,
+        poolRight: pool ? pool.right : x + 120,
+        shoreTopY: pool ? pool.y - 8 : y - 64,
+      });
+    } else {
+      return;
+    }
+    this.boss.setDepth(Depth.boss);
+    ui.showBossBar(BOSS_NAMES[id]);
+    this.setupBossWiring();
+  }
+
+  /** Overlaps + scene events for the boss fight (idempotent across restarts). */
+  private setupBossWiring(): void {
+    const boss = this.boss!;
+    this.physics.add.overlap(this.player, boss, () => this.onPlayerTouchBoss());
+    // Player fireballs: connect in the vulnerable window, clank off otherwise.
+    this.physics.add.overlap(this.fireballs, boss, (f) => {
+      const ball = f as Fireball;
+      if (ball.isDone || boss.isDying) return;
+      ball.explode();
+      if (!boss.hurt()) audioManager.play("clank");
+    });
+    // Boss projectiles: die on terrain, hurt the player on contact.
+    this.physics.add.collider(this.bossOrbs, this.level.terrain, (o) =>
+      (o as BossOrb).pop()
+    );
+    this.physics.add.overlap(this.player, this.bossOrbs, (_p, o) => {
+      const orb = o as BossOrb;
+      if (orb.isDone || this.player.isDashing) return;
+      orb.pop();
+      this.damagePlayer();
+    });
+    // Tentacles hurt only while they're actually out (not during the warning).
+    this.physics.add.overlap(this.player, this.bossZones, (_p, t) => {
+      if ((t as Tentacle).damaging) this.damagePlayer();
+    });
+
+    // Scene events (the emitter persists across restarts — re-arm cleanly).
+    this.events.off(BossEvents.Hp, this.onBossHp, this);
+    this.events.on(BossEvents.Hp, this.onBossHp, this);
+    this.events.off(BossEvents.Hurt, this.onBossHurt, this);
+    this.events.on(BossEvents.Hurt, this.onBossHurt, this);
+    this.events.off(BossEvents.Summon, this.onBossSummon, this);
+    this.events.on(BossEvents.Summon, this.onBossSummon, this);
+    this.events.off(BossEvents.Phase, this.onBossPhase, this);
+    this.events.on(BossEvents.Phase, this.onBossPhase, this);
+    this.events.off(BossEvents.Defeated, this.onBossDefeated, this);
+    this.events.on(BossEvents.Defeated, this.onBossDefeated, this);
+  }
+
+  /** Player↔boss contact: stomps bounce (and connect when vulnerable),
+   *  side contact hurts, the shadow dash phases through. */
+  private onPlayerTouchBoss(): void {
+    const boss = this.boss;
+    if (!boss?.active || boss.isDying || this.failed || this.levelComplete) return;
+
+    const pb = this.player.body;
+    const eb = boss.body;
+    const wasAbove = pb.prev.y + pb.height <= eb.top + Physics.STOMP_TOLERANCE_PX;
+    if (pb.velocity.y > 0 && wasAbove) {
+      this.player.bounce();
+      if (!boss.hurt()) {
+        // Armored: the stomp clanks off harmlessly.
+        audioManager.play("clank");
+        this.particles.stompPuff(this.player.x, eb.top);
+      }
+      return;
+    }
+    if (this.player.isDashing) return; // the shadow dash phases through
+    if (boss.canDamage()) this.damagePlayer();
+  }
+
+  private onBossHp(frac: number): void {
+    ui.setBossHp(frac);
+  }
+
+  /** A hit connected: heavy feedback so every HP tick feels earned. */
+  private onBossHurt(x: number, y: number): void {
+    audioManager.play("bosshurt");
+    this.spawnFx(FX_ANIMS.impact, FX_SHEETS.impact.key, x, y, 1.0);
+    this.particles.stompPuff(x, y);
+    this.cameras.main.shake(110, 0.004);
+    gameState.addScore(Progression.STOMP_SCORE * 2);
+  }
+
+  /** The Monarch calls a shadow beast (capped so the arena stays fair). */
+  private onBossSummon(x: number, y: number): void {
+    const alive = this.enemies
+      .getChildren()
+      .filter((e) => e.active && e instanceof ShadowBeast).length;
+    if (alive >= BOSS_MINION_CAP) return;
+    const beast = new ShadowBeast(this, x, y, this.level.terrain);
+    beast.setDepth(Depth.enemy);
+    this.enemies.add(beast);
+    this.plodders.add(beast);
+    this.particles.shadowKill(x, y - 20); // violet burst as it materializes
+  }
+
+  /** Enrage: nudge the soundtrack up — the fight audibly shifts gears. */
+  private onBossPhase(): void {
+    const bgm = this.bgm as
+      | (Phaser.Sound.BaseSound & { setRate?: (rate: number) => unknown })
+      | undefined;
+    bgm?.setRate?.(1.08);
+  }
+
+  /** The boss fell: big send-off, clear the field, then the results flow. */
+  private onBossDefeated(x: number, y: number): void {
+    if (this.levelComplete || this.failed) return;
+    audioManager.play("bossdie");
+    this.cameras.main.shake(320, 0.008);
+    this.cameras.main.flash(200, 255, 255, 255);
+    this.spawnFx(FX_ANIMS.impact, FX_SHEETS.impact.key, x, y, 1.7, { frameRate: 18 });
+    this.particles.powerupSparkle(x, y);
+    gameState.addScore(BOSS_SCORE);
+    ui.setBossHp(0);
+
+    // The minions and projectiles dissolve with their master.
+    for (const e of this.enemies.getChildren()) {
+      const enemy = e as Enemy;
+      if (enemy.active && !enemy.isDying && enemy.stompable) enemy.stomp();
+    }
+    for (const o of this.bossOrbs.getChildren()) (o as BossOrb).pop();
+
+    this.time.delayedCall(1000, () => this.onBossVictory());
+  }
+
+  private onBossVictory(): void {
+    if (this.levelComplete || this.failed) return;
+    this.levelComplete = true;
+    this.bgm?.stop();
+    audioManager.play("complete");
+    this.finishLevel((done) => this.playBossCelebration(done));
+  }
+
+  /** Victory beat in place of the flag slide: pose + a little firework. */
+  private playBossCelebration(onDone: () => void): void {
+    const p = this.player;
+    p.setVelocity(0, 0);
+    p.poseLandCelebrate();
+    for (let i = 0; i < 5; i++) {
+      this.time.delayedCall(i * 170, () =>
+        this.particles.powerupSparkle(
+          p.x - 60 + Math.random() * 120,
+          p.y - 24 - Math.random() * 56
+        )
+      );
+    }
+    this.time.delayedCall(COMPLETE_DELAY + 700, onDone);
+  }
+
+  /** World y of the first solid ground line under a world x. */
+  private groundYAt(x: number): number {
+    const terrain = this.level.terrain;
+    for (let y = 16; y < this.level.heightPx; y += 16) {
+      const tile = terrain.getTileAtWorldXY(x, y);
+      if (tile && tile.collides) return tile.pixelY;
+    }
+    return this.level.heightPx;
   }
 
   private createBeacon(x: number, y: number): void {
@@ -864,6 +1077,19 @@ export class GameScene extends Phaser.Scene {
       );
       audioManager.play("stomp");
     }
+
+    // The boss too can be punched — but only connects while vulnerable.
+    const boss = this.boss;
+    if (boss?.active && !boss.isDying) {
+      const bb = boss.body;
+      const left = dir === 1 ? p.x - back : p.x - range;
+      const right = dir === 1 ? p.x + range : p.x + back;
+      const inBox =
+        bb.right >= left &&
+        bb.left <= right &&
+        Math.abs(bb.center.y - p.y) <= height + bb.halfHeight;
+      if (inBox && !boss.hurt()) audioManager.play("clank");
+    }
   }
 
   /** Shadow dash kickoff: violet burst, whoosh, and a tiny camera nudge —
@@ -1026,7 +1252,9 @@ export class GameScene extends Phaser.Scene {
    * run as a translucent ghost.
    */
   private setupGhost(): void {
-    if (gameState.isMarathon) {
+    // No ghosts on boss stages: the fight is nondeterministic, so a replay
+    // of a previous run would just desync into noise.
+    if (gameState.isMarathon || getLevel(gameState.levelIndex)?.distance === "boss") {
       this.ghostRecorder = undefined;
       return;
     }
@@ -1051,6 +1279,8 @@ export class GameScene extends Phaser.Scene {
 
   private damagePlayer(): void {
     const result = this.player.takeDamage();
+    // Count real hits (drives the boss stages' "no damage" star).
+    if (result !== "invulnerable") gameState.hitsTaken += 1;
     if (result === "shrank") {
       audioManager.play("hurt");
     }
@@ -1080,7 +1310,15 @@ export class GameScene extends Phaser.Scene {
     this.levelComplete = true;
     this.bgm?.stop();
     audioManager.play("complete");
+    this.finishLevel((done) => this.playFlagSequence(done));
+  }
 
+  /**
+   * Shared level-completion flow: stars, records, then the results screen —
+   * preceded by the stage's outro `sequence` (flag slide on regular levels,
+   * the victory beat on boss stages).
+   */
+  private finishLevel(sequence: (onDone: () => void) => void): void {
     const levelIndex = gameState.levelIndex;
     const level = getLevel(levelIndex)!;
     const timeSec = gameState.timeElapsed;
@@ -1091,9 +1329,13 @@ export class GameScene extends Phaser.Scene {
       : levelIndex >= LEVEL_COUNT - 1;
 
     // Stars: 1 for the clear, +1 for every coin, +1 for beating the par time.
+    // Boss arenas have no coins — their middle star is "take no damage".
+    const bossStage = level.distance === "boss";
+    const noDamage = gameState.hitsTaken === 0;
     const allCoins = gameState.allLevelCoins;
     const underPar = timeSec <= level.parTime;
-    const stars = 1 + (allCoins ? 1 : 0) + (underPar ? 1 : 0);
+    const stars =
+      1 + ((bossStage ? noDamage : allCoins) ? 1 : 0) + (underPar ? 1 : 0);
 
     const bonus = gameState.awardTimeBonus(level.parTime);
     // Per-level records also count in a marathon: the level timer resets on
@@ -1128,7 +1370,7 @@ export class GameScene extends Phaser.Scene {
     // splash, then straight into the next level. Only the final level shows
     // the run summary.
     if (gameState.isMarathon && !lastLevel) {
-      this.playFlagSequence(() => {
+      sequence(() => {
         gameState.advanceLevel();
         ui.showMarathonSplash(gameState.levelIndex);
         fadeOutThen(this, () => this.scene.restart());
@@ -1140,7 +1382,7 @@ export class GameScene extends Phaser.Scene {
       const runTime = gameState.runTime;
       const runCoins = gameState.runCoins;
       const deaths = gameState.deaths;
-      this.playFlagSequence(() => {
+      sequence(() => {
         fadeOutThen(this, () =>
           ui.showMarathonComplete({
             timeSec: runTime,
@@ -1154,7 +1396,7 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    this.playFlagSequence(() => {
+    sequence(() => {
       fadeOutThen(this, () =>
         ui.showComplete({
           bonus,
@@ -1168,6 +1410,8 @@ export class GameScene extends Phaser.Scene {
           parTime: level.parTime,
           coins: gameState.levelCoins,
           coinTotal: gameState.levelCoinTotal,
+          bossStage,
+          noDamage,
         })
       );
     });
@@ -1301,6 +1545,22 @@ export class GameScene extends Phaser.Scene {
       specialCooldown: () => this.player.specialCooldownFrac,
       waterZoneCount: () => this.waterZones.length,
       hasGhost: () => this.ghost !== undefined,
+      // Boss-stage inspection
+      hasBoss: () => this.boss?.active === true,
+      bossHp: () => this.boss?.hpFrac ?? null,
+      bossVulnerable: () => this.boss?.isVulnerable ?? false,
+      bossEnraged: () => this.boss?.isEnraged ?? false,
+      bossPos: () =>
+        this.boss ? { x: this.boss.x, y: this.boss.y } : null,
+      bossOrbCount: () => this.bossOrbs.getLength(),
+      tentacleCount: () => this.bossZones.getLength(),
+      hitsTaken: () => gameState.hitsTaken,
+      hurtBoss: () => this.boss?.hurt() ?? false,
+      activateStar: (ms = 600000) => this.player.activateStar(ms),
+      forceVulnerable: () => {
+        const b = this.boss as unknown as { vulnerableFlag?: boolean } | undefined;
+        if (b) b.vulnerableFlag = true;
+      },
       pressSpecial: () => {
         if (window.touchInputState) window.touchInputState.special = true;
         this.time.delayedCall(50, () => {

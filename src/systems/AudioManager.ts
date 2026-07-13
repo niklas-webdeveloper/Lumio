@@ -18,7 +18,11 @@ export type SfxName =
   | "blackflash"
   | "walljump"
   | "splash"
-  | "swim";
+  | "swim"
+  | "bossroar"
+  | "bosshurt"
+  | "bossdie"
+  | "clank";
 
 type Wave = OscillatorType;
 
@@ -292,6 +296,33 @@ class AudioManager {
         // One paddle stroke — a soft, watery blub.
         this.noise(0.1, 0.1, t, 900, 300);
         this.tone(220, 420, 0.1, "sine", 0.12, t);
+        break;
+      case "bossroar":
+        // A boss telegraph: deep rising growl under a throaty noise sweep.
+        this.noise(0.5, 0.24, t, 500, 2200);
+        this.tone(70, 160, 0.5, "sawtooth", 0.22, t);
+        this.tone(52, 110, 0.55, "square", 0.14, t + 0.05);
+        break;
+      case "bosshurt":
+        // A hit that COUNTS: bright metallic crack + falling body groan.
+        this.noise(0.12, 0.26, t, 4200, 900);
+        this.tone(880, 220, 0.16, "square", 0.2, t);
+        this.tone(160, 70, 0.3, "sawtooth", 0.18, t + 0.03);
+        break;
+      case "bossdie":
+        // The kill: long broken-machine descent with a final low boom.
+        this.noise(0.5, 0.3, t, 3600, 120);
+        this.seq(
+          [[520, 0.12], [392, 0.12], [294, 0.14], [196, 0.18], [98, 0.4]],
+          "square",
+          0.2
+        );
+        this.tone(60, 30, 0.7, "sine", 0.26, t + 0.3);
+        break;
+      case "clank":
+        // Armor shrugging a hit off — short, dull, clearly "no damage".
+        this.tone(620, 480, 0.06, "square", 0.16, t);
+        this.tone(310, 240, 0.09, "triangle", 0.14, t + 0.01);
         break;
     }
   }

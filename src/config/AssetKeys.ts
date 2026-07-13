@@ -53,6 +53,13 @@ export const TextureKeys = {
   LavaGolem: "tex_lava_golem", // level 6: molten rock golem (ground)
   Phoenix: "tex_phoenix", // level 6: fiery phoenix (flyer, 18-frame flight)
   Frog: "tex_frog", // level 7: hopping jungle frog (SunnyLand strip)
+  // Bosses (loaded sprite strips) — see bossArt.ts.
+  BossMonarch: "tex_boss_monarch", // level 8: the Shadow Monarch (3 poses)
+  ShadowBeast: "tex_shadow_beast", // level 8: the Monarch's summoned minion
+  BossKraken: "tex_boss_kraken", // level 9: the Kraken (idle/attack/stun)
+  Tentacle: "tex_tentacle", // level 9: rising tentacle hazard column
+  ShadowOrb: "tex_shadow_orb", // Monarch's shadow-bolt projectile
+  InkOrb: "tex_ink_orb", // Kraken's lobbed ink blob
   Pipe: "tex_pipe", // pipe obstacle / plant housing
   PipeShadow: "tex_pipe_shadow", // level 5: arcane stone conduit (themed pipe)
   PipeCrimson: "tex_pipe_crimson", // level 6: obsidian vent (themed pipe)
@@ -70,6 +77,10 @@ export const EnemyAnim = {
   shadowSoldierMarch: "shadow-soldier-march",
   phoenixFly: "phoenix-fly",
   frogIdle: "frog-idle",
+  shadowBeastProwl: "shadow-beast-prowl",
+  monarchBrandish: "monarch-brandish",
+  krakenIdle: "kraken-idle",
+  tentacleWave: "tentacle-wave",
 } as const;
 
 // Player character art now comes from loaded sprite sheets — see
