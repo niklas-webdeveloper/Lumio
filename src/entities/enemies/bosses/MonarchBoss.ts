@@ -200,12 +200,17 @@ export class MonarchBoss extends Boss {
     }
   }
 
-  /** Fade out, reappear away from the player, call the shadow beasts. */
+  /** Fade out, reappear a SHORT hop from the player, call the shadow beasts.
+   *  Deliberately not across the map: chasing him down was a slog — he stays
+   *  engaged, just far enough to read his next pattern. */
   private teleportAwayAndSummon(): void {
     const bounds = this.scene.physics.world.bounds;
-    const left = bounds.left + 170;
-    const right = bounds.right - 170;
-    const targetX = this.cfg.player.x > (left + right) / 2 ? left : right;
+    const left = bounds.left + 130;
+    const right = bounds.right - 130;
+    const px = this.cfg.player.x;
+    // Reappear ~260px to the player's roomier side, clamped into the arena.
+    const dir = px < (left + right) / 2 ? 1 : -1;
+    const targetX = Phaser.Math.Clamp(px + dir * 260, left, right);
 
     this.teleporting = true;
     this.setVelocity(0, 0);

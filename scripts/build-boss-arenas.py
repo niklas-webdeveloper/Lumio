@@ -156,57 +156,57 @@ class Builder:
 
 
 def build_monarch_arena():
-    """Monarchs Thron — a wide arcane hall for the Shadow Monarch. Generous
-    floor space and a whole ring of ledges: the dash sweeps only the floor,
-    so there is always a safe perch within one jump."""
-    b = Builder(52)
+    """Monarchs Thron — a COMPACT arcane hall for the Shadow Monarch. Tight
+    enough that the boss is always a short run away (he also reappears near
+    the player, see MonarchBoss), with two ledges + a center perch as safe
+    spots: the dash sweeps only the floor."""
+    b = Builder(36)
     b.wall(0, 1)
-    b.wall(50, 51)
-    b.ground(2, 50)
+    b.wall(34, 35)
+    b.ground(2, 34)
 
-    # Four side ledges + a high center perch: plenty of routes to break
-    # line-of-sight from the bolt volleys and to hop over the dash.
+    # Two side ledges + a high center perch: enough to break line-of-sight
+    # from the bolt volleys and hop over the dash, without long treks.
     b.platform(6, 4, 8)
-    b.platform(14, 4, 9)
-    b.platform(34, 4, 9)
-    b.platform(42, 4, 8)
-    b.platform(23, 5, 5, PLATE)
+    b.platform(26, 4, 8)
+    b.platform(16, 4, 5, PLATE)
 
     # Supply block under the perch: hit it from the floor for a combat item.
-    b.item_block(25, 8)
+    b.item_block(18, 8)
 
-    b.player(6)
-    b.boss("monarch", 40)
+    b.player(5)
+    b.boss("monarch", 26)
     return b
 
 
 def build_kraken_arena():
-    """Krakenbucht — two WIDE shores around the Kraken's pool, each with a
-    raised ledge. Tentacles only root on the ground (see KrakenBoss), so the
+    """Krakenbucht — a COMPACT bay: two short shores around a narrow pool, so
+    the beached head is never more than a few steps away. Each shore has a
+    raised ledge; tentacles only root on the ground (see KrakenBoss), so the
     ledges and the plank are genuine safe perches during the tentacle phase."""
-    b = Builder(56)
+    b = Builder(42)
     b.wall(0, 1)
-    b.wall(54, 55)
+    b.wall(40, 41)
 
     # Left and right shore, raised above a deep center pool.
-    b.ground(2, 22, top=10)
-    b.ground(34, 54, top=10)
+    b.ground(2, 17, top=10)
+    b.ground(25, 40, top=10)
     # Pool floor (bottom row) so swimmers and sinking ink stay contained.
-    for c in range(22, 34):
+    for c in range(17, 25):
         b.grid[13][c] = DIRT
-    b.water(22, 33, surface_row=10)
+    b.water(17, 24, surface_row=10)
 
     # Tentacle-safe ledges on both shores + the plank over the pool
     # (the stomp route onto the slumped head).
-    b.platform(8, 4, 7)
-    b.platform(44, 4, 7)
-    b.platform(26, 4, 6, PLATE)
+    b.platform(7, 4, 7)
+    b.platform(31, 4, 7)
+    b.platform(19, 4, 6, PLATE)
 
     # Supply block over the left shore: hit it from the sand for a combat item.
-    b.item_block(15, 7)
+    b.item_block(12, 7)
 
-    b.player(6, top=10)
-    b.boss("kraken", 28, top=13)
+    b.player(5, top=10)
+    b.boss("kraken", 21, top=13)
     return b
 
 
