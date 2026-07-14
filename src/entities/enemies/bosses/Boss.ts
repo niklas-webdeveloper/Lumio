@@ -24,12 +24,13 @@ export const BossEvents = {
 const STRIKE_IFRAMES_MS = 700;
 
 /**
- * Base for arena bosses: multi-hit health with two ways in — ability/item
- * STRIKES connect any time (gated by short i-frames), while plain stomps only
- * count in the explicit VULNERABLE window (outside it they clank off). Enrage
- * at half health, defeat dissolve at 0. Extends Enemy for the shared
- * physics/aura plumbing but is deliberately kept OUT of GameScene's `enemies`
- * group — bosses have their own damage rules (no one-hit stomps, etc.).
+ * Base for arena bosses: multi-hit health with two damage paths — STRIKES
+ * (abilities, items, and armored stomps) connect any time but are gated by
+ * short i-frames, while `hurt` (stomps in the explicit VULNERABLE window)
+ * bypasses the i-frames so the punish window pays out fast. Enrage at half
+ * health, defeat dissolve at 0. Extends Enemy for the shared physics/aura
+ * plumbing but is deliberately kept OUT of GameScene's `enemies` group —
+ * bosses have their own damage rules (no one-hit stomps, etc.).
  */
 export abstract class Boss extends Enemy {
   /** Never stomp-killed like a regular enemy (scene bypasses group logic). */

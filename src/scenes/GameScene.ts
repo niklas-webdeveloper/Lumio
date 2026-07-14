@@ -138,6 +138,9 @@ export class GameScene extends Phaser.Scene {
   private levelComplete = false;
   /** Next time star-power contact may chip the boss (slow tick gate). */
   private starStrikeAt = 0;
+  /** Contact grace after bouncing off the boss: the leftover overlap of the
+   *  very next frames must not count as a side hit against the player. */
+  private bossContactGraceUntil = 0;
 
   // Goal-pole geometry, captured at spawn for the completion slide.
   private beaconFlag?: Phaser.GameObjects.Image;
@@ -159,6 +162,7 @@ export class GameScene extends Phaser.Scene {
     this.ghost = undefined;
     this.boss = undefined;
     this.starStrikeAt = 0;
+    this.bossContactGraceUntil = 0;
 
     // DOM HUD + level title card (the UI layer owns the HUD).
     ui.onGameSceneCreate();
@@ -721,13 +725,19 @@ export class GameScene extends Phaser.Scene {
     const wasAbove = pb.prev.y + pb.height <= eb.top + Physics.STOMP_TOLERANCE_PX;
     if (pb.velocity.y > 0 && wasAbove) {
       this.player.bounce();
-      if (!boss.hurt()) {
-        // Armored: the stomp clanks off harmlessly.
+      // The bounce leaves the bodies overlapping for a few more frames —
+      // that residue must never count as a side hit against the player.
+      this.bossContactGraceUntil = this.time.now + 350;
+      // A stomp always tries to connect: unrestricted in the vulnerable
+      // window (hurt), chip damage through the i-frames otherwise (strike).
+      if (!boss.hurt() && !boss.strike(1)) {
+        // I-frames still ticking: this one clanks off.
         audioManager.play("clank");
         this.particles.stompPuff(this.player.x, eb.top);
       }
       return;
     }
+    if (this.time.now < this.bossContactGraceUntil) return; // just bounced off
     if (boss.canDamage()) this.damagePlayer();
   }
 
