@@ -13,6 +13,7 @@ import type { BgTheme } from "@/config/backgrounds";
 import { gameState } from "@/systems/GameState";
 import { saveState, type MarathonRecord } from "@/systems/SaveState";
 import { ghostStore } from "@/systems/Ghost";
+import { duelClient, type DuelResult } from "@/systems/DuelClient";
 import { audioManager } from "@/systems/AudioManager";
 import {
   UI,
@@ -71,7 +72,16 @@ export interface MarathonCompleteData {
   best: MarathonRecord | null;
 }
 
-type KeyContext = "home" | "modes" | "levels" | "pause" | "complete" | "gameover" | "game";
+type KeyContext =
+  | "home"
+  | "modes"
+  | "levels"
+  | "pause"
+  | "complete"
+  | "gameover"
+  | "game"
+  | "duel" // the online-duel lobby (create/join a room)
+  | "duelend"; // finished own run: waiting for the opponent / the result
 
 /**
  * Critical UI images decoded before the home screen is revealed, so menus,
@@ -171,6 +181,8 @@ class UIManager {
     this.buildHome();
     this.buildModes();
     this.buildLevels();
+    this.buildDuel();
+    this.wireDuelCallbacks();
     this.hud = new Hud(this.root, {
       onPause: () => this.requestPause(),
       makeTools: () => [
@@ -193,7 +205,7 @@ class UIManager {
     this.ctx = newCtx;
     // Relaxed synth loop under the menus; silent during gameplay, pause and
     // the result screens (those either show the frozen game or its own bgm).
-    if (newCtx === "home" || newCtx === "modes" || newCtx === "levels") {
+    if (newCtx === "home" || newCtx === "modes" || newCtx === "levels" || newCtx === "duel") {
       audioManager.startMenuMusic();
     } else {
       audioManager.stopMenuMusic();
@@ -441,6 +453,7 @@ class UIManager {
 
   showHome(): void {
     this.stopGame();
+    this.abandonDuel();
     if (!saveState.currentUsername) {
       this.showLoginOverlay();
       return;
@@ -593,9 +606,9 @@ class UIManager {
     desc: string;
     stats: string;
     onPick: () => void;
-    marathon?: boolean;
+    variant?: "marathon" | "duel";
   }): HTMLElement {
-    const card = el("div", `mode-card${opts.marathon ? " marathon" : ""}`);
+    const card = el("div", `mode-card${opts.variant ? ` ${opts.variant}` : ""}`);
     card.innerHTML =
       `<div class="mode-icon">${icoTag(opts.icon)}</div>` +
       `<div class="mode-name">${opts.name}</div>` +
@@ -626,12 +639,22 @@ class UIManager {
         ? `${icoTag("timer")} Bestzeit ${fmtTimePrecise(best.time)}`
         : `${icoTag("timer")} Noch kein Run geschafft`,
       onPick: () => this.startMarathon(),
-      marathon: true,
+      variant: "marathon",
+    });
+
+    const duel = this.modeCard({
+      icon: "play",
+      name: "ONLINE-DUELL",
+      desc: "Fordere einen Freund heraus: gleiches Level, gleichzeitig — der andere läuft live als Geist mit. Wer ist zuerst im Ziel?",
+      stats: `${icoTag("star")} Mit Raumcode verbinden`,
+      onPick: () => this.showDuelLobby(),
+      variant: "duel",
     });
 
     classic.onmouseenter = () => this.selectMode(0);
     marathon.onmouseenter = () => this.selectMode(1);
-    grid.append(classic, marathon);
+    duel.onmouseenter = () => this.selectMode(2);
+    grid.append(classic, marathon, duel);
     this.selectedMode = 0;
 
     this.hideAll();
@@ -642,7 +665,7 @@ class UIManager {
   }
 
   private selectMode(i: number): void {
-    this.selectedMode = Math.max(0, Math.min(1, i));
+    this.selectedMode = Math.max(0, Math.min(2, i));
     this.highlightMode();
   }
 
@@ -652,6 +675,7 @@ class UIManager {
   }
 
   startMarathon(): void {
+    this.abandonDuel();
     gameState.startNewGame(0, "marathon");
     this.hideAll();
     this.closeOverlays();
@@ -762,12 +786,404 @@ class UIManager {
   }
 
   startLevel(i: number): void {
+    this.abandonDuel();
     gameState.startNewGame(i);
     this.hideAll();
     this.closeOverlays();
     this.setContext("game");
     this.hud.show();
     this.game.scene.start(SceneKeys.Game);
+  }
+
+  // ---------- Online duel ----------
+
+  /**
+   * Static skeleton of the duel lobby: a create panel (level pick + code
+   * button) and a join panel (code input). The hosting view (big room code)
+   * swaps in after creating. All dynamic state is reset in showDuelLobby.
+   */
+  private buildDuel(): void {
+    const s = el("div", "ui-screen hidden");
+    s.append(el("div", "title", "ONLINE-DUELL"));
+    s.append(
+      el(
+        "div",
+        "subtitle",
+        "gleiches Level, live gegeneinander — der Gegner läuft als Geist mit"
+      )
+    );
+
+    // Create / join side by side.
+    const lobby = el("div", "duel-panels");
+    lobby.id = "duel-lobby";
+
+    const create = el("div", "panel duel-panel");
+    create.append(el("div", "panel-title", "RAUM ERSTELLEN"));
+    const levelSelect = el("select", "login-input duel-select") as HTMLSelectElement;
+    levelSelect.id = "duel-level-select";
+    create.appendChild(levelSelect);
+    const createBtn = button("CODE ERZEUGEN", "gold", { icon: "play" });
+    createBtn.id = "duel-create-btn";
+    createBtn.onclick = () => {
+      const idx = parseInt(levelSelect.value, 10) || 0;
+      createBtn.disabled = true;
+      this.duelStatus("Erstelle Raum …", true);
+      duelClient.createRoom(idx);
+    };
+    create.appendChild(createBtn);
+
+    const join = el("div", "panel duel-panel");
+    join.append(el("div", "panel-title", "BEITRETEN"));
+    const codeInput = el("input", "login-input duel-code-input") as HTMLInputElement;
+    codeInput.id = "duel-code-input";
+    codeInput.type = "text";
+    codeInput.placeholder = "CODE";
+    codeInput.maxLength = 4;
+    codeInput.autocomplete = "off";
+    codeInput.oninput = () => {
+      codeInput.value = codeInput.value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+    };
+    join.appendChild(codeInput);
+    const joinBtn = button("BEITRETEN", "green", { icon: "play" });
+    joinBtn.id = "duel-join-btn";
+    const doJoin = () => {
+      if (codeInput.value.length < 4) {
+        codeInput.classList.add("error-shake");
+        setTimeout(() => codeInput.classList.remove("error-shake"), 500);
+        return;
+      }
+      joinBtn.disabled = true;
+      this.duelStatus("Trete bei …", true);
+      duelClient.joinRoom(codeInput.value);
+    };
+    joinBtn.onclick = doJoin;
+    codeInput.onkeydown = (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        doJoin();
+      }
+    };
+    join.appendChild(joinBtn);
+
+    lobby.append(create, join);
+    s.appendChild(lobby);
+
+    // Hosting view: the shareable room code, revealed after creating.
+    const hosting = el("div", "panel duel-panel duel-hosting hidden");
+    hosting.id = "duel-hosting";
+    hosting.append(el("div", "panel-title", "DEIN RAUMCODE"));
+    const codeEl = el("div", "duel-code");
+    codeEl.id = "duel-code";
+    hosting.appendChild(codeEl);
+    hosting.append(
+      el("div", "muted-text duel-hosting-hint", "Schick den Code deinem Freund — er tritt damit bei.")
+    );
+    s.appendChild(hosting);
+
+    const status = el("div", "duel-status");
+    status.id = "duel-status";
+    s.appendChild(status);
+
+    const back = button("Back", "blue");
+    back.onclick = () => {
+      this.abandonDuel();
+      this.showModes();
+    };
+    s.appendChild(back);
+    s.appendChild(el("div", "hint", "Beide brauchen nur diesen Screen — kein Account, nur der Code"));
+    this.root.appendChild(s);
+    this.screens.duel = s;
+  }
+
+  /** Open the duel lobby (fresh create/join view) and connect to the server. */
+  showDuelLobby(): void {
+    this.stopGame();
+    this.abandonDuel();
+    this.hideAll();
+    this.closeOverlays();
+
+    // Reset the dynamic pieces.
+    const s = this.screens.duel;
+    (s.querySelector("#duel-lobby") as HTMLElement).classList.remove("hidden");
+    (s.querySelector("#duel-hosting") as HTMLElement).classList.add("hidden");
+    const createBtn = s.querySelector("#duel-create-btn") as HTMLButtonElement;
+    const joinBtn = s.querySelector("#duel-join-btn") as HTMLButtonElement;
+    const codeInput = s.querySelector("#duel-code-input") as HTMLInputElement;
+    createBtn.disabled = false;
+    joinBtn.disabled = false;
+    codeInput.value = "";
+
+    // Any playable (non-boss) level may be raced — duels don't touch saves.
+    const levelSelect = s.querySelector("#duel-level-select") as HTMLSelectElement;
+    levelSelect.innerHTML = "";
+    LEVELS.forEach((lvl, i) => {
+      if (lvl.distance === "boss") return;
+      const opt = el("option") as HTMLOptionElement;
+      opt.value = String(i);
+      opt.textContent = `Level ${i + 1} · ${lvl.title}`;
+      levelSelect.appendChild(opt);
+    });
+
+    this.duelStatus("");
+    this.revealScreen(s);
+    this.setContext("duel");
+
+    duelClient.connect().then(
+      () => {
+        // Don't clobber a message another flow just put there (e.g. the
+        // "opponent left" notice that reopens this lobby).
+        const status = s.querySelector("#duel-status") as HTMLElement;
+        if (this.ctx === "duel" && !duelClient.active && status.textContent === "") {
+          this.duelStatus("Verbunden — erstelle einen Raum oder tritt bei!");
+        }
+      },
+      () => this.duelStatus("Server nicht erreichbar — versuch es später nochmal.", false, true)
+    );
+  }
+
+  /** Update the lobby status line (optional spinner / error styling). */
+  private duelStatus(text: string, spin = false, error = false): void {
+    const status = this.screens.duel.querySelector("#duel-status") as HTMLElement;
+    status.classList.toggle("error", error);
+    status.innerHTML = text
+      ? `${spin ? '<span class="duel-spinner"></span>' : ""}${text}`
+      : "";
+  }
+
+  /** All server → UI wiring for the duel (set up once at attach time). */
+  private wireDuelCallbacks(): void {
+    duelClient.onCreated = (code) => {
+      if (this.ctx !== "duel") return;
+      const s = this.screens.duel;
+      (s.querySelector("#duel-lobby") as HTMLElement).classList.add("hidden");
+      const hosting = s.querySelector("#duel-hosting") as HTMLElement;
+      hosting.classList.remove("hidden");
+      (s.querySelector("#duel-code") as HTMLElement).textContent = code;
+      this.duelStatus("Warte auf deinen Freund …", true);
+    };
+
+    duelClient.onMatched = () => {
+      if (this.ctx !== "duel") return;
+      this.duelStatus(`Gegner gefunden: ${duelClient.opponent?.name ?? "?"} — das Duell startet!`);
+      window.setTimeout(() => {
+        if (duelClient.phase === "matched") this.startDuelLevel();
+      }, 900);
+    };
+
+    duelClient.onGo = () => this.onDuelGo();
+
+    duelClient.onOpponentFinished = (time) =>
+      this.duelToast(`${duelClient.opponent?.name ?? "Gegner"} ist im Ziel — ${fmtTimePrecise(time)}!`);
+
+    duelClient.onResult = (r) => this.showDuelResult(r);
+    duelClient.onOpponentLeft = () => this.onDuelOpponentLeft();
+
+    duelClient.onRematchRequested = () => {
+      const hint = document.getElementById("duel-rematch-hint");
+      if (hint) hint.textContent = `${duelClient.opponent?.name ?? "Gegner"} will eine Revanche!`;
+    };
+
+    duelClient.onRematchStart = () => this.startDuelLevel();
+
+    duelClient.onError = (m) => {
+      if (this.ctx === "duel") {
+        this.duelStatus(m, false, true);
+        const s = this.screens.duel;
+        (s.querySelector("#duel-create-btn") as HTMLButtonElement).disabled = false;
+        (s.querySelector("#duel-join-btn") as HTMLButtonElement).disabled = false;
+      } else {
+        this.duelToast(m);
+      }
+    };
+
+    duelClient.onConnectionLost = () => {
+      document.getElementById("duel-wait-pill")?.remove();
+      if (this.ctx === "duel") {
+        this.duelStatus("Verbindung zum Server verloren.", false, true);
+        this.showDuelLobby();
+      } else if (this.ctx === "game" || this.ctx === "duelend") {
+        this.duelEndPanel("VERBINDUNG WEG", "Die Verbindung zum Server ist abgerissen — das Duell endet hier.");
+      }
+    };
+  }
+
+  /** Launch (or relaunch, on rematch) the duel level for both players. */
+  private startDuelLevel(): void {
+    duelClient.resetForRace();
+    gameState.startNewGame(duelClient.levelIndex, "duel");
+    this.hideAll();
+    this.closeOverlays();
+    this.setContext("game");
+    this.hud.show();
+    this.game.scene.start(SceneKeys.Game);
+    // Frozen at the start line until the server's GO arrives.
+    document.getElementById("duel-wait-pill")?.remove();
+    const pill = el(
+      "div",
+      "duel-wait-pill",
+      `<span class="duel-spinner"></span>Warte auf ${duelClient.opponent?.name ?? "Gegner"} …`
+    );
+    pill.id = "duel-wait-pill";
+    this.root.appendChild(pill);
+  }
+
+  /** Server GO: both scenes are loaded — run the 3-2-1 and start the clocks. */
+  private onDuelGo(): void {
+    document.getElementById("duel-wait-pill")?.remove();
+    if (this.ctx !== "game") return; // the scene was abandoned meanwhile
+    this.runCountdown(() => {
+      this.setContext("game");
+      duelClient.markRaceStarted();
+    });
+  }
+
+  /**
+   * Own run finished (called by GameScene after the flag sequence): if the
+   * result is already in, show it — otherwise wait for the opponent.
+   */
+  showDuelFinish(timeSec: number): void {
+    if (duelClient.result) {
+      this.showDuelResult(duelClient.result);
+      return;
+    }
+    this.stopGame();
+    this.hud.hide();
+    const o = this.overlay(true);
+    const p = el("div", "panel");
+    p.append(el("div", "panel-title", "IM ZIEL!"));
+    const timeRow = el("div", "stat-row");
+    timeRow.innerHTML =
+      `<div class="stat-box time"><span class="k">Deine Zeit</span>` +
+      `<span class="v">${fmtTimePrecise(timeSec)}</span></div>`;
+    p.appendChild(timeRow);
+    const wait = el(
+      "div",
+      "duel-status",
+      `<span class="duel-spinner"></span>Warte auf ${duelClient.opponent?.name ?? "Gegner"} …`
+    );
+    p.appendChild(wait);
+    const row = el("div", "row");
+    const home = button("Home", "blue", { icon: "home" });
+    home.onclick = () => this.showHome();
+    row.appendChild(home);
+    p.appendChild(row);
+    o.appendChild(p);
+    this.setContext("duelend");
+  }
+
+  /** Final standings: winner banner, both runs, rematch + home. */
+  showDuelResult(result: DuelResult): void {
+    this.stopGame();
+    this.hud.hide();
+    document.getElementById("duel-wait-pill")?.remove();
+    const o = this.overlay(true);
+    const p = el("div", "panel wide duel-result");
+
+    const title =
+      result.winner === "you" ? "SIEG!" : result.winner === "opponent" ? "NIEDERLAGE" : "UNENTSCHIEDEN";
+    p.append(el("div", `panel-title duel-${result.winner}`, title));
+    if (result.forfeit) {
+      p.append(el("div", "muted-text", "Dein Gegner hat das Duell verlassen — Sieg kampflos!"));
+    }
+    audioManager.play(result.winner === "you" ? "complete" : "death");
+
+    // Both runs, winner on top.
+    const you = { ...result.you, me: true, won: result.winner === "you" };
+    const opp = { ...result.opponent, me: false, won: result.winner === "opponent" };
+    const rows = [you, opp].sort((a, b) => Number(b.won) - Number(a.won));
+    const list = el("div", "duel-rows");
+    for (const r of rows) {
+      const rowEl = el("div", `duel-row${r.won ? " winner" : ""}${r.me ? " me" : ""}`);
+      rowEl.innerHTML =
+        `<span class="dr-crown">${r.won ? icoTag("crown") : ""}</span>` +
+        `<span class="dr-name">${r.me ? "Du" : r.name}</span>` +
+        `<span class="dr-time">${icoTag("timer")}${result.forfeit && !r.me ? "aufgegeben" : fmtTimePrecise(r.time)}</span>` +
+        `<span class="dr-deaths">${result.forfeit && !r.me ? "" : `☠ ${r.deaths}`}</span>`;
+      list.appendChild(rowEl);
+    }
+    p.appendChild(list);
+
+    const hint = el("div", "muted-text duel-rematch-hint");
+    hint.id = "duel-rematch-hint";
+    p.appendChild(hint);
+
+    const row = el("div", "row");
+    // Rematch only makes sense while the room still exists on both ends.
+    if (!result.forfeit && duelClient.phase === "finished") {
+      const rematch = button("REVANCHE", "orange");
+      rematch.onclick = () => {
+        duelClient.requestRematch();
+        rematch.disabled = true;
+        rematch.textContent = "Warte auf Gegner …";
+      };
+      row.appendChild(rematch);
+    }
+    const home = button("Home", "blue", { icon: "home" });
+    home.onclick = () => this.showHome();
+    row.appendChild(home);
+    p.appendChild(row);
+    o.appendChild(p);
+    this.setContext("duelend");
+  }
+
+  /** The opponent walked out — in the lobby, mid-race or on the results. */
+  private onDuelOpponentLeft(): void {
+    document.getElementById("duel-wait-pill")?.remove();
+    if (this.ctx === "duel") {
+      // Back to a fresh lobby (the room is gone).
+      this.showDuelLobby();
+      this.duelStatus("Dein Gegner hat den Raum verlassen.", false, true);
+      return;
+    }
+    if (duelClient.result) {
+      // Mid-race or waiting at the finish: win by forfeit.
+      this.showDuelResult(duelClient.result);
+      return;
+    }
+    if (this.ctx === "game" || this.ctx === "duelend") {
+      this.duelEndPanel("DUELL BEENDET", "Dein Gegner hat das Duell verlassen.");
+    }
+  }
+
+  /** Generic "the duel ended here" panel (disconnect, walkout before GO). */
+  private duelEndPanel(title: string, text: string): void {
+    this.stopGame();
+    this.hud.hide();
+    const o = this.overlay(true);
+    const p = el("div", "panel purple");
+    p.append(el("div", "panel-title", title));
+    p.append(el("div", "muted-text", text));
+    const row = el("div", "row");
+    const home = button("Home", "blue", { icon: "home" });
+    home.onclick = () => this.showHome();
+    row.appendChild(home);
+    p.appendChild(row);
+    o.appendChild(p);
+    this.setContext("duelend");
+  }
+
+  /** Small floating notice during a race ("X ist im Ziel!"), self-removing. */
+  private duelToast(text: string): void {
+    document.getElementById("duel-toast")?.remove();
+    const toast = el("div", "duel-toast", text);
+    toast.id = "duel-toast";
+    this.root.appendChild(toast);
+    toast.animate(
+      [
+        { opacity: 0, transform: "translate(-50%, -1.5vmin)" },
+        { opacity: 1, transform: "translate(-50%, 0)", offset: 0.12 },
+        { opacity: 1, offset: 0.85 },
+        { opacity: 0 },
+      ],
+      { duration: 3200, easing: "ease-out" }
+    ).onfinish = () => toast.remove();
+    window.setTimeout(() => toast.remove(), 4000);
+  }
+
+  /** Leave any live duel room (safe no-op otherwise) + drop the wait pill. */
+  private abandonDuel(): void {
+    document.getElementById("duel-wait-pill")?.remove();
+    duelClient.leave();
   }
 
   /** Called from GameScene.create (fresh start, respawn or retry). */
@@ -932,7 +1348,14 @@ class UIManager {
       this.stopGame();
       this.showLevels();
     };
-    if (gameState.isMarathon) {
+    if (gameState.isDuel) {
+      // The race clock is wall time — pausing hides the action but the duel
+      // runs on. Only resume or forfeit make sense here.
+      p.append(el("div", "muted-text", "Die Duell-Uhr läuft weiter!"));
+      const forfeit = button("Aufgeben", "orange");
+      forfeit.onclick = () => this.showHome();
+      row.append(resume, forfeit);
+    } else if (gameState.isMarathon) {
       // No free level restart mid-marathon — that would dodge the death rule.
       row.append(resume, levels, home);
     } else {
@@ -954,7 +1377,26 @@ class UIManager {
     if (this.resuming) return;
     this.resuming = true;
     this.closeOverlays();
+    this.runCountdown(
+      () => {
+        this.resuming = false;
+        this.setContext("game");
+        this.game.scene.resume(SceneKeys.Game);
+        this.game.sound.resumeAll();
+      },
+      () => {
+        this.resuming = false;
+      }
+    );
+  }
 
+  /**
+   * Big animated 3-2-1-GO! counter over the current frame. onDone fires after
+   * "GO!"; onAbort fires instead if the overlay was removed from outside
+   * (e.g. Home stopped the game mid-count). Shared by the pause-resume flow
+   * and the online duel's race start.
+   */
+  private runCountdown(onDone: () => void, onAbort?: () => void): void {
     const o = this.overlay(false);
     o.classList.add("countdown-overlay");
     const num = el("div", "countdown-num");
@@ -968,17 +1410,14 @@ class UIManager {
     ];
     let i = 0;
     const tick = () => {
-      // Aborted from outside (e.g. Home stopped the game) — don't resume.
+      // Aborted from outside (e.g. Home stopped the game) — don't finish.
       if (!o.isConnected) {
-        this.resuming = false;
+        onAbort?.();
         return;
       }
       if (i >= steps.length) {
-        this.resuming = false;
         this.closeOverlays();
-        this.setContext("game");
-        this.game.scene.resume(SceneKeys.Game);
-        this.game.sound.resumeAll();
+        onDone();
         return;
       }
       const step = steps[i];
@@ -1198,8 +1637,18 @@ class UIManager {
         else if (k === "ArrowRight" || k === "d") this.selectMode(this.selectedMode + 1);
         else if (k === "Enter" || k === " ") {
           if (this.selectedMode === 0) this.showLevels();
-          else this.startMarathon();
+          else if (this.selectedMode === 1) this.startMarathon();
+          else this.showDuelLobby();
         } else if (k === "Escape") this.showHome();
+        break;
+      case "duel":
+        if (k === "Escape") {
+          this.abandonDuel();
+          this.showModes();
+        }
+        break;
+      case "duelend":
+        if (k === "Escape") this.showHome();
         break;
       case "levels":
         if (k === "ArrowLeft" || k === "a") this.selectLevel(this.selectedLevel - 1);

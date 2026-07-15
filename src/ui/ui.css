@@ -1946,3 +1946,193 @@
   border-radius: 1vmin;
   background: linear-gradient(90deg, transparent, var(--ms-accent), transparent);
 }
+
+/* ---- Online duel (lobby, live-race widgets, results) ---- */
+/* Duel mode card: cool violet so the three modes read differently. */
+.mode-card.duel {
+  background: linear-gradient(180deg, #5f5ae0 0%, #3a3d96 100%);
+}
+
+.duel-panels {
+  display: flex;
+  gap: 3.5vmin;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.duel-panel {
+  width: 44vmin;
+  min-height: 34vmin;
+  padding: 7vmin 4.5vmin 4vmin;
+  gap: 2.2vmin;
+}
+.duel-panel .panel-title {
+  font-size: 3.6vmin;
+}
+.duel-select {
+  appearance: none;
+  cursor: pointer;
+}
+.duel-select option {
+  background: #0e2a36;
+  color: #fff;
+  font-family: "Baloo 2", sans-serif;
+}
+.duel-code-input {
+  letter-spacing: 0.35em;
+  text-transform: uppercase;
+  font-size: 4vmin;
+}
+
+/* The shareable room code, big enough to read over a shoulder/photo. */
+.duel-hosting {
+  width: 52vmin;
+  min-height: 30vmin;
+}
+.duel-code {
+  font-family: "Baloo 2", sans-serif;
+  font-weight: 800;
+  font-size: 9vmin;
+  line-height: 1.1;
+  letter-spacing: 0.28em;
+  padding: 0.5vmin 1vmin 0.5vmin 1.8vmin; /* balances the letter-spacing tail */
+  color: var(--gold-soft);
+  paint-order: stroke fill;
+  -webkit-text-stroke: 0.6vmin var(--ink);
+  text-shadow: 0 0.4vmin 0 var(--gold-deep), 0 0 3vmin rgba(255, 224, 138, 0.35);
+  background: rgba(9, 40, 52, 0.55);
+  border-radius: 2vmin;
+  border: 0.35vmin solid var(--gold);
+}
+.duel-hosting-hint {
+  font-size: 2.2vmin;
+}
+
+.duel-status {
+  min-height: 3.6vmin;
+  display: inline-flex;
+  align-items: center;
+  gap: 1.2vmin;
+  font-size: 2.4vmin;
+  font-weight: 700;
+  color: var(--text-dim);
+  text-shadow: 0 0.2vmin 0.2vmin rgba(0, 20, 30, 0.5);
+}
+.duel-status.error {
+  color: #ff9a8a;
+}
+
+.duel-spinner {
+  width: 2.4vmin;
+  height: 2.4vmin;
+  flex: none;
+  margin-right: 0.6vmin;
+  border-radius: 50%;
+  border: 0.45vmin solid rgba(255, 255, 255, 0.25);
+  border-top-color: var(--gold);
+  animation: duelSpin 0.8s linear infinite;
+  display: inline-block;
+}
+@keyframes duelSpin {
+  to { transform: rotate(360deg); }
+}
+
+/* "Waiting for the opponent" pill under the HUD while the scenes sync up. */
+.duel-wait-pill {
+  position: absolute;
+  top: 12vmin;
+  left: 50%;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  padding: 1.2vmin 2.6vmin;
+  border-radius: 10vmin;
+  background: rgba(9, 40, 52, 0.75);
+  border: 0.3vmin solid var(--gold);
+  font-size: 2.4vmin;
+  font-weight: 700;
+  color: var(--text-dim);
+  pointer-events: none;
+}
+
+/* Mid-race notice ("X ist im Ziel!") — floats in, floats out on its own. */
+.duel-toast {
+  position: absolute;
+  top: 12vmin;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 1.2vmin 2.8vmin;
+  border-radius: 10vmin;
+  background: rgba(9, 40, 52, 0.85);
+  border: 0.3vmin solid var(--gold);
+  font-size: 2.5vmin;
+  font-weight: 800;
+  color: var(--gold-soft);
+  pointer-events: none;
+}
+
+/* Result panel: winner tinted title + one row per player. */
+.panel-title.duel-you {
+  text-shadow: 0 0.4vmin 0 #1d8f2e, 0 0.7vmin 0.2vmin rgba(0, 0, 0, 0.35);
+}
+.panel-title.duel-opponent {
+  text-shadow: 0 0.4vmin 0 #a03030, 0 0.7vmin 0.2vmin rgba(0, 0, 0, 0.35);
+}
+.duel-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 1.2vmin;
+  width: 100%;
+  max-width: 52vmin;
+}
+.duel-row {
+  display: flex;
+  align-items: center;
+  gap: 1.6vmin;
+  padding: 1.2vmin 2.2vmin;
+  border-radius: 1.6vmin;
+  background: rgba(9, 40, 52, 0.45);
+  font-size: 2.6vmin;
+  font-weight: 700;
+}
+.duel-row.winner {
+  background: rgba(244, 195, 63, 0.18);
+  border: 0.3vmin solid var(--gold);
+}
+.duel-row .dr-crown {
+  width: 3.2vmin;
+  display: inline-flex;
+}
+.duel-row .dr-crown img {
+  width: 3.2vmin;
+  height: 3.2vmin;
+  object-fit: contain;
+}
+.duel-row .dr-name {
+  flex: 1;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.duel-row.me .dr-name {
+  color: var(--gold-soft);
+}
+.duel-row .dr-time {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.7vmin;
+  font-variant-numeric: tabular-nums;
+}
+.duel-row .dr-time img {
+  width: 2.6vmin;
+  height: 2.6vmin;
+  object-fit: contain;
+}
+.duel-row .dr-deaths {
+  width: 8vmin;
+  text-align: right;
+  color: var(--text-dim);
+}
+.duel-rematch-hint {
+  min-height: 2.8vmin;
+}

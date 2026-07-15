@@ -19,6 +19,11 @@ export default defineConfig({
         target: "http://localhost:3000",
         changeOrigin: true,
       },
+      // Online-duel WebSocket (same Express server in production).
+      "/ws": {
+        target: "ws://localhost:3000",
+        ws: true,
+      },
     },
   },
   build: {

@@ -1,9 +1,11 @@
 import express from "express";
 import cors from "cors";
 import fs from "fs";
+import http from "http";
 import path from "path";
 import { fileURLToPath } from "url";
 import { MongoClient } from "mongodb";
+import { WebSocketServer } from "ws";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -239,6 +241,241 @@ app.use((req, res) => {
   }
 });
 
-app.listen(PORT, () => {
+// ---------------------------------------------------------------------------
+// Online duel: two players race the same level live over WebSockets.
+// The server is only a lobby + relay — all physics stays client-side. One
+// player creates a room and gets a short code, the friend joins with it, the
+// server matches them, starts the race and relays position frames so each
+// client can draw the opponent as a live ghost. Times are measured locally
+// from each client's GO; the lower reported time wins.
+// ---------------------------------------------------------------------------
+
+// Room codes: no easily-confused characters (I/O/0/1).
+const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+const CODE_LENGTH = 4;
+const MAX_ROOMS = 200;
+const ROOM_TTL_MS = 30 * 60 * 1000;
+
+/** code -> { code, level, createdAt, state, players: [{ws,name,char,...}] } */
+const duelRooms = new Map();
+
+function makeRoomCode() {
+  for (let attempt = 0; attempt < 64; attempt++) {
+    let code = "";
+    for (let i = 0; i < CODE_LENGTH; i++) {
+      code += CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)];
+    }
+    if (!duelRooms.has(code)) return code;
+  }
+  return null;
+}
+
+function wsSend(ws, msg) {
+  if (ws.readyState === 1) ws.send(JSON.stringify(msg));
+}
+
+function duelPlayer(ws, msg) {
+  return {
+    ws,
+    name: String(msg.name || "Spieler").slice(0, 15),
+    char: String(msg.char || "lumio").slice(0, 32),
+    ready: false,
+    finished: false,
+    time: 0,
+    deaths: 0,
+    rematch: false,
+  };
+}
+
+const playerOf = (room, ws) => room.players.find((p) => p.ws === ws);
+const opponentOf = (room, ws) => room.players.find((p) => p.ws !== ws);
+
+/** Remove a socket from its room; the one left behind is told and freed. */
+function leaveDuelRoom(ws) {
+  const room = ws.duelRoom;
+  if (!room) return;
+  ws.duelRoom = null;
+  room.players = room.players.filter((p) => p.ws !== ws);
+  duelRooms.delete(room.code);
+  for (const p of room.players) {
+    p.ws.duelRoom = null;
+    wsSend(p.ws, { type: "opponent-left" });
+  }
+}
+
+/** Both players reported their time: announce the winner to each side. */
+function finishDuel(room) {
+  room.state = "finished";
+  for (const p of room.players) {
+    const opp = opponentOf(room, p.ws);
+    const winner =
+      p.time < opp.time ? "you" : p.time > opp.time ? "opponent" : "draw";
+    wsSend(p.ws, {
+      type: "result",
+      winner,
+      you: { name: p.name, time: p.time, deaths: p.deaths },
+      opponent: { name: opp.name, time: opp.time, deaths: opp.deaths },
+    });
+  }
+}
+
+function handleDuelMessage(ws, msg) {
+  switch (msg.type) {
+    case "create": {
+      leaveDuelRoom(ws);
+      if (duelRooms.size >= MAX_ROOMS) {
+        return wsSend(ws, { type: "error", message: "Der Server ist gerade voll — versuch es gleich nochmal." });
+      }
+      const code = makeRoomCode();
+      if (!code) {
+        return wsSend(ws, { type: "error", message: "Kein freier Raumcode — versuch es gleich nochmal." });
+      }
+      const level = Number.isInteger(msg.level) && msg.level >= 0 && msg.level < 32 ? msg.level : 0;
+      const room = {
+        code,
+        level,
+        createdAt: Date.now(),
+        state: "waiting",
+        players: [duelPlayer(ws, msg)],
+      };
+      duelRooms.set(code, room);
+      ws.duelRoom = room;
+      wsSend(ws, { type: "created", code });
+      break;
+    }
+
+    case "join": {
+      leaveDuelRoom(ws);
+      const code = String(msg.code || "").trim().toUpperCase();
+      const room = duelRooms.get(code);
+      if (!room) {
+        return wsSend(ws, { type: "error", message: "Raum nicht gefunden — prüf den Code!" });
+      }
+      if (room.players.length >= 2) {
+        return wsSend(ws, { type: "error", message: "Dieser Raum ist schon voll." });
+      }
+      room.players.push(duelPlayer(ws, msg));
+      ws.duelRoom = room;
+      room.state = "matched";
+      const [host, guest] = room.players;
+      wsSend(host.ws, { type: "matched", level: room.level, opponent: { name: guest.name, char: guest.char } });
+      wsSend(guest.ws, { type: "matched", level: room.level, opponent: { name: host.name, char: host.char } });
+      break;
+    }
+
+    // Both scenes are loaded: the race may start (each client runs its own
+    // 3-2-1 countdown after GO, times are measured from the local GO).
+    case "ready": {
+      const room = ws.duelRoom;
+      if (!room || room.state !== "matched" || room.players.length < 2) return;
+      playerOf(room, ws).ready = true;
+      if (room.players.every((p) => p.ready)) {
+        room.state = "racing";
+        for (const p of room.players) wsSend(p.ws, { type: "go" });
+      }
+      break;
+    }
+
+    // Position frame for the live ghost — relay straight to the opponent.
+    case "pos": {
+      const room = ws.duelRoom;
+      if (!room || room.state !== "racing") return;
+      const opp = opponentOf(room, ws);
+      if (opp) {
+        wsSend(opp.ws, {
+          type: "pos",
+          t: Number(msg.t) || 0,
+          x: Number(msg.x) || 0,
+          y: Number(msg.y) || 0,
+          f: msg.f ? 1 : 0,
+        });
+      }
+      break;
+    }
+
+    case "finish": {
+      const room = ws.duelRoom;
+      if (!room || room.state !== "racing") return;
+      const me = playerOf(room, ws);
+      if (me.finished) return;
+      me.finished = true;
+      me.time = Math.max(0, Number(msg.time) || 0);
+      me.deaths = Math.max(0, msg.deaths | 0);
+      const opp = opponentOf(room, ws);
+      if (opp) wsSend(opp.ws, { type: "opponent-finished", time: me.time });
+      if (room.players.every((p) => p.finished)) finishDuel(room);
+      break;
+    }
+
+    // Rematch: both must agree, then the ready/GO cycle runs again.
+    case "rematch": {
+      const room = ws.duelRoom;
+      if (!room || room.state !== "finished" || room.players.length < 2) return;
+      playerOf(room, ws).rematch = true;
+      const opp = opponentOf(room, ws);
+      if (opp && !opp.rematch) wsSend(opp.ws, { type: "rematch-requested" });
+      if (room.players.every((p) => p.rematch)) {
+        room.state = "matched";
+        for (const p of room.players) {
+          Object.assign(p, { ready: false, finished: false, time: 0, deaths: 0, rematch: false });
+        }
+        for (const p of room.players) wsSend(p.ws, { type: "rematch-start", level: room.level });
+      }
+      break;
+    }
+
+    case "leave":
+      leaveDuelRoom(ws);
+      break;
+
+    default:
+      break;
+  }
+}
+
+const server = http.createServer(app);
+const wss = new WebSocketServer({ server, path: "/ws/duel" });
+
+wss.on("connection", (ws) => {
+  ws.isAlive = true;
+  ws.duelRoom = null;
+  ws.on("pong", () => (ws.isAlive = true));
+  ws.on("message", (raw) => {
+    let msg;
+    try {
+      msg = JSON.parse(raw);
+    } catch {
+      return;
+    }
+    if (msg && typeof msg === "object") handleDuelMessage(ws, msg);
+  });
+  ws.on("close", () => leaveDuelRoom(ws));
+  ws.on("error", () => leaveDuelRoom(ws));
+});
+
+// Heartbeat (drops dead connections, keeps Render's idle timeout away) and
+// stale-room sweep in one timer.
+setInterval(() => {
+  for (const client of wss.clients) {
+    if (client.isAlive === false) {
+      client.terminate();
+      continue;
+    }
+    client.isAlive = false;
+    client.ping();
+  }
+  const now = Date.now();
+  for (const [code, room] of duelRooms) {
+    if (now - room.createdAt > ROOM_TTL_MS) {
+      for (const p of room.players) {
+        p.ws.duelRoom = null;
+        wsSend(p.ws, { type: "error", message: "Der Raum ist abgelaufen." });
+      }
+      duelRooms.delete(code);
+    }
+  }
+}, 30000);
+
+server.listen(PORT, () => {
   console.log(`Backend server running on http://localhost:${PORT}`);
 });

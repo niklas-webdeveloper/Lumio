@@ -139,6 +139,11 @@ export class Hud {
     if (gameState.isMarathon) {
       this.set("level", `Lv ${gameState.levelIndex + 1}/${MARATHON_LEVEL_COUNT}`);
       this.set("time", fmtTime(gameState.runTime));
+    } else if (gameState.isDuel) {
+      // Duel: the race clock is wall time since GO (mirrored into runTime by
+      // GameScene) — it keeps counting through deaths.
+      this.set("level", `Duell · Lv ${gameState.levelIndex + 1}`);
+      this.set("time", fmtTime(gameState.runTime));
     } else {
       this.set("level", `Lv ${gameState.levelIndex + 1}`);
       this.set("time", fmtTime(gameState.timeElapsed));

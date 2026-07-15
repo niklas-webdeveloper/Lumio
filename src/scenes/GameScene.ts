@@ -54,6 +54,8 @@ import { Physics } from "@/config/PhysicsConfig";
 import { saveState } from "@/systems/SaveState";
 import { FX_SHEETS, FX_ANIMS } from "@/config/characterAssets";
 import { ghostStore, GhostRecorder, GhostPlayer } from "@/systems/Ghost";
+import { duelClient } from "@/systems/DuelClient";
+import { LiveGhost } from "@/systems/LiveGhost";
 import { audioManager } from "@/systems/AudioManager";
 import { fadeIn, fadeOutThen } from "@/systems/transition";
 import { ui } from "@/ui/UIManager";
@@ -82,6 +84,12 @@ const BOSS_SCORE = 1000;
 /** Delay (ms) before resolving a death or a completed level. */
 const DEATH_DELAY = 900;
 const COMPLETE_DELAY = 700;
+
+/** Online duel: seconds between streamed position frames (12.5 Hz, like the
+ *  ghost recorder) and how far behind the newest frame the ghost renders
+ *  (rides out network jitter). */
+const DUEL_SEND_INTERVAL_SEC = 0.08;
+const DUEL_GHOST_DELAY_SEC = 0.18;
 
 /** Star item: on-demand invincibility duration (ms). */
 const STAR_DURATION_MS = 5000;
@@ -127,6 +135,10 @@ export class GameScene extends Phaser.Scene {
   private ghostRecorder?: GhostRecorder;
   /** Plays back the stored best run as a translucent ghost. */
   private ghost?: GhostPlayer;
+  /** Online duel: the opponent, drawn live from relayed frames. */
+  private duelGhost?: LiveGhost;
+  /** Online duel: race-clock time of the next position frame to stream. */
+  private duelNextSendAt = 0;
   /** The arena boss (boss stages only). */
   private boss?: Boss;
   /** Boss projectiles (pop on terrain and on the player). */
@@ -220,6 +232,7 @@ export class GameScene extends Phaser.Scene {
 
     gameState.startLevelTimer();
     this.setupGhost();
+    this.setupDuel();
     this.exposeTestApi();
 
     this.sound.mute = audioManager.isMuted(); // global mute drives the bgm
@@ -231,15 +244,22 @@ export class GameScene extends Phaser.Scene {
     } else {
       this.bgm = undefined;
     }
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () =>
-      this.bgm?.stop()
-    );
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.bgm?.stop();
+      // The ghost's sprites die with the scene — drop the wrapper so a late
+      // update (or the next create) can't touch destroyed objects.
+      this.duelGhost = undefined;
+    });
   }
 
   override update(_time: number, delta: number): void {
     this.inputManager.update();
 
-    if (!this.failed && !this.levelComplete && !this.warping) {
+    // Online duel: everyone waits frozen at the start line until the server's
+    // GO has run through the local 3-2-1 countdown.
+    const duelWaiting = gameState.isDuel && !duelClient.racing && duelClient.myTime === null;
+
+    if (!this.failed && !this.levelComplete && !this.warping && !duelWaiting) {
       this.updateSurfaceState();
       this.player.updatePlayer(delta, this.inputManager.getState());
       if (this.inputManager.getState().useItemJustPressed) this.useHeldItem();
@@ -256,6 +276,9 @@ export class GameScene extends Phaser.Scene {
     } else if (this.warping) {
       gameState.tickTime(delta); // the detour still costs run time
     }
+
+    // The opponent's ghost keeps moving even while we're dead or done.
+    this.updateDuel();
 
     // The parallax realigns on FOLLOW_UPDATE (after the camera settles) — no
     // second update() call here, that would just do the same work twice.
@@ -1301,8 +1324,13 @@ export class GameScene extends Phaser.Scene {
    */
   private setupGhost(): void {
     // No ghosts on boss stages: the fight is nondeterministic, so a replay
-    // of a previous run would just desync into noise.
-    if (gameState.isMarathon || getLevel(gameState.levelIndex)?.distance === "boss") {
+    // of a previous run would just desync into noise. In a duel the live
+    // opponent ghost takes this slot instead.
+    if (
+      gameState.isMarathon ||
+      gameState.isDuel ||
+      getLevel(gameState.levelIndex)?.distance === "boss"
+    ) {
       this.ghostRecorder = undefined;
       return;
     }
@@ -1320,6 +1348,55 @@ export class GameScene extends Phaser.Scene {
     if (this.ghost) {
       this.ghost.setVisible(ghostStore.isEnabled());
       if (ghostStore.isEnabled()) this.ghost.update(gameState.timeElapsed);
+    }
+  }
+
+  // ----- Online duel (live opponent ghost) -----
+
+  /**
+   * Duel mode: spawn the opponent's live ghost and report the loaded scene
+   * to the server (the ready/GO handshake; only the first scene start of a
+   * race sends ready — death restarts land here again mid-race).
+   */
+  private setupDuel(): void {
+    if (!gameState.isDuel) return;
+    const opp = duelClient.opponent;
+    if (opp) {
+      this.duelGhost = new LiveGhost(
+        this,
+        opp.char,
+        opp.name,
+        this.level.playerSpawn.x,
+        this.level.playerSpawn.y,
+        Depth.ghost
+      );
+      if (duelClient.opponentFinished) this.duelGhost.finishAndFade();
+    }
+    this.duelNextSendAt = 0;
+    duelClient.sendReady();
+  }
+
+  /**
+   * Per-frame duel work: mirror the wall-clock race time into the HUD clock,
+   * stream our position (only while actually running) and advance the
+   * opponent's ghost — that one moves on even while we're dead or finished.
+   */
+  private updateDuel(): void {
+    if (!gameState.isDuel || !this.duelGhost) return;
+    if (!duelClient.racing && duelClient.myTime === null) return; // pre-GO
+
+    const t = duelClient.elapsed();
+    gameState.runTime = t; // the HUD's duel clock
+
+    if (duelClient.racing && !this.failed && !this.levelComplete && t >= this.duelNextSendAt) {
+      this.duelNextSendAt = t + DUEL_SEND_INTERVAL_SEC;
+      duelClient.sendPos(this.player.x, this.player.y, this.player.flipX);
+    }
+
+    if (duelClient.opponentFinished) {
+      this.duelGhost.finishAndFade();
+    } else {
+      this.duelGhost.update(duelClient.frames, t - DUEL_GHOST_DELAY_SEC);
     }
   }
 
@@ -1344,6 +1421,13 @@ export class GameScene extends Phaser.Scene {
     audioManager.play("death");
 
     this.time.delayedCall(DEATH_DELAY, () => {
+      // Duel: a death never ends the race — restart the level, the duel
+      // clock (wall time since GO) keeps running and is punishment enough.
+      if (gameState.isDuel) {
+        gameState.deaths += 1;
+        fadeOutThen(this, () => this.scene.restart());
+        return;
+      }
       const gameOver = gameState.loseLife();
       if (gameOver) {
         fadeOutThen(this, () => ui.showGameOver());
@@ -1367,6 +1451,17 @@ export class GameScene extends Phaser.Scene {
    * the victory beat on boss stages).
    */
   private finishLevel(sequence: (onDone: () => void) => void): void {
+    // Online duel: report the finish, then hand over to the duel result flow.
+    // Nothing is recorded — duels never touch progression or best times (a
+    // guest may race levels they haven't unlocked yet).
+    if (gameState.isDuel) {
+      const duelTime = duelClient.finish(gameState.deaths);
+      sequence(() => {
+        fadeOutThen(this, () => ui.showDuelFinish(duelTime));
+      });
+      return;
+    }
+
     const levelIndex = gameState.levelIndex;
     const level = getLevel(levelIndex)!;
     const timeSec = gameState.timeElapsed;
@@ -1538,6 +1633,9 @@ export class GameScene extends Phaser.Scene {
 
   /** True if the player asked to pause this frame (P/Esc, handled by the UI). */
   public get canPause(): boolean {
+    // Duel, pre-GO: a paused scene would swallow the server's race start
+    // (and the 3-2-1 countdown overlay) — no pausing until the race runs.
+    if (gameState.isDuel && !duelClient.racing && duelClient.myTime === null) return false;
     return !this.failed && !this.levelComplete && !this.warping;
   }
 

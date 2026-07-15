@@ -18,8 +18,11 @@ export const Progression = {
  * "marathon": all levels back to back with 3 lives for the whole run; the
  * clock keeps counting across levels *and* failed attempts, a death restarts
  * the current level, game over voids the run.
+ * "duel": online race against a friend on one level — the duel clock is wall
+ * time since GO (runs on in the DuelClient), deaths restart the level but
+ * never end the run, and nothing is saved (no records, no unlocks).
  */
-export type GameMode = "levels" | "marathon";
+export type GameMode = "levels" | "marathon" | "duel";
 
 /** Stashable special item held in the Mario-Kart-style item slot. */
 export type HeldItem = "fireburst" | "star" | null;
@@ -65,6 +68,10 @@ class GameState {
 
   get isMarathon(): boolean {
     return this.mode === "marathon";
+  }
+
+  get isDuel(): boolean {
+    return this.mode === "duel";
   }
 
   /** Reset the stopwatch + level coin count for the start (or restart) of a level. */
