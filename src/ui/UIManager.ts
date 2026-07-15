@@ -914,15 +914,10 @@ class UIManager {
     codeInput.value = "";
 
     // Any playable (non-boss) level may be raced — duels don't touch saves.
-    const levelSelect = s.querySelector("#duel-level-select") as HTMLSelectElement;
-    levelSelect.innerHTML = "";
-    LEVELS.forEach((lvl, i) => {
-      if (lvl.distance === "boss") return;
-      const opt = el("option") as HTMLOptionElement;
-      opt.value = String(i);
-      opt.textContent = `Level ${i + 1} · ${lvl.title}`;
-      levelSelect.appendChild(opt);
-    });
+    this.fillDuelLevelSelect(
+      s.querySelector("#duel-level-select") as HTMLSelectElement,
+      0
+    );
 
     this.duelStatus("");
     this.revealScreen(s);
@@ -939,6 +934,24 @@ class UIManager {
       },
       () => this.duelStatus("Server nicht erreichbar — versuch es später nochmal.", false, true)
     );
+  }
+
+  /** Fill a <select> with every raceable (non-boss) level. */
+  private fillDuelLevelSelect(select: HTMLSelectElement, preselect: number): void {
+    select.innerHTML = "";
+    LEVELS.forEach((lvl, i) => {
+      if (lvl.distance === "boss") return;
+      const opt = el("option") as HTMLOptionElement;
+      opt.value = String(i);
+      opt.textContent = `Level ${i + 1} · ${lvl.title}`;
+      opt.selected = i === preselect;
+      select.appendChild(opt);
+    });
+  }
+
+  /** True while the duel level is loaded but the race hasn't started yet. */
+  private get duelWaiting(): boolean {
+    return gameState.isDuel && !duelClient.racing && duelClient.myTime === null;
   }
 
   /** Update the lobby status line (optional spinner / error styling). */
@@ -1016,14 +1029,19 @@ class UIManager {
     this.setContext("game");
     this.hud.show();
     this.game.scene.start(SceneKeys.Game);
-    // Frozen at the start line until the server's GO arrives.
+    // Frozen at the start line until the server's GO arrives. Abbrechen (or
+    // Esc/pause) bails back to the lobby — nobody should be stuck here if
+    // the other player never turns up.
     document.getElementById("duel-wait-pill")?.remove();
     const pill = el(
       "div",
       "duel-wait-pill",
-      `<span class="duel-spinner"></span>Warte auf ${duelClient.opponent?.name ?? "Gegner"} …`
+      `<span class="duel-spinner"></span><span>Warte auf ${duelClient.opponent?.name ?? "Gegner"} …</span>`
     );
     pill.id = "duel-wait-pill";
+    const cancel = el("button", "duel-cancel-btn", "✕ Abbrechen");
+    cancel.onclick = () => this.showDuelLobby();
+    pill.appendChild(cancel);
     this.root.appendChild(pill);
   }
 
@@ -1110,11 +1128,28 @@ class UIManager {
     const row = el("div", "row");
     // Rematch only makes sense while the room still exists on both ends.
     if (!result.forfeit && duelClient.phase === "finished") {
+      // The host picks the next round's level; the guest just agrees.
+      let levelSelect: HTMLSelectElement | null = null;
+      if (duelClient.role === "host") {
+        const next = el("div", "duel-next-level");
+        next.append(el("span", "dnl-label", "Nächstes Level:"));
+        levelSelect = el("select", "login-input duel-select duel-select-sm") as HTMLSelectElement;
+        this.fillDuelLevelSelect(levelSelect, duelClient.levelIndex);
+        next.appendChild(levelSelect);
+        p.appendChild(next);
+      } else {
+        p.append(
+          el("div", "muted-text duel-next-hint", "Das nächste Level wählt der Raum-Ersteller.")
+        );
+      }
       const rematch = button("REVANCHE", "orange");
       rematch.onclick = () => {
-        duelClient.requestRematch();
+        duelClient.requestRematch(
+          levelSelect ? parseInt(levelSelect.value, 10) || 0 : undefined
+        );
         rematch.disabled = true;
         rematch.textContent = "Warte auf Gegner …";
+        if (levelSelect) levelSelect.disabled = true;
       };
       row.appendChild(rematch);
     }
@@ -1328,6 +1363,12 @@ class UIManager {
   requestPause(): void {
     if (this.resuming) return;
     if (this.ctx !== "game" || !this.game.scene.isActive(SceneKeys.Game)) return;
+    // Duel, pre-GO: there's nothing to pause yet — Esc/pause quits back to
+    // the lobby instead (the opponent may simply never show up).
+    if (this.duelWaiting) {
+      this.showDuelLobby();
+      return;
+    }
     const gs = this.game.scene.getScene(SceneKeys.Game) as unknown as { canPause?: boolean };
     if (gs && gs.canPause === false) return;
     this.game.scene.pause(SceneKeys.Game);

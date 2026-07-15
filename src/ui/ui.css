@@ -2044,14 +2044,32 @@
   transform: translateX(-50%);
   display: inline-flex;
   align-items: center;
-  padding: 1.2vmin 2.6vmin;
+  gap: 1.6vmin;
+  padding: 1.2vmin 1.6vmin 1.2vmin 2.6vmin;
   border-radius: 10vmin;
   background: rgba(9, 40, 52, 0.75);
   border: 0.3vmin solid var(--gold);
   font-size: 2.4vmin;
   font-weight: 700;
   color: var(--text-dim);
-  pointer-events: none;
+  pointer-events: auto;
+}
+.duel-cancel-btn {
+  pointer-events: auto;
+  cursor: pointer;
+  padding: 0.6vmin 1.6vmin;
+  border-radius: 10vmin;
+  border: 0.3vmin solid rgba(255, 255, 255, 0.35);
+  background: rgba(255, 90, 106, 0.25);
+  color: #ffd7d7;
+  font-family: "Baloo 2", sans-serif;
+  font-size: 2vmin;
+  font-weight: 800;
+  transition: background 0.15s ease, transform 0.1s ease;
+}
+.duel-cancel-btn:hover {
+  background: rgba(255, 90, 106, 0.45);
+  transform: scale(1.04);
 }
 
 /* Mid-race notice ("X ist im Ziel!") — floats in, floats out on its own. */
@@ -2135,4 +2153,27 @@
 }
 .duel-rematch-hint {
   min-height: 2.8vmin;
+}
+
+/* Rematch level pick on the result panel (host only). */
+.duel-next-level {
+  display: flex;
+  align-items: center;
+  gap: 1.6vmin;
+  width: 100%;
+  max-width: 52vmin;
+}
+.duel-next-level .dnl-label {
+  flex: none;
+  font-size: 2.3vmin;
+  font-weight: 800;
+  color: var(--gold-soft);
+  text-shadow: 0 0.2vmin 0.2vmin rgba(0, 20, 30, 0.5);
+}
+.duel-select-sm {
+  font-size: 2.3vmin;
+  padding: 1vmin 1.8vmin;
+}
+.duel-next-hint {
+  font-size: 2.1vmin;
 }

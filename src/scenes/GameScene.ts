@@ -86,10 +86,8 @@ const DEATH_DELAY = 900;
 const COMPLETE_DELAY = 700;
 
 /** Online duel: seconds between streamed position frames (12.5 Hz, like the
- *  ghost recorder) and how far behind the newest frame the ghost renders
- *  (rides out network jitter). */
+ *  ghost recorder). */
 const DUEL_SEND_INTERVAL_SEC = 0.08;
-const DUEL_GHOST_DELAY_SEC = 0.18;
 
 /** Star item: on-demand invincibility duration (ms). */
 const STAR_DURATION_MS = 5000;
@@ -278,7 +276,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     // The opponent's ghost keeps moving even while we're dead or done.
-    this.updateDuel();
+    this.updateDuel(delta);
 
     // The parallax realigns on FOLLOW_UPDATE (after the camera settles) — no
     // second update() call here, that would just do the same work twice.
@@ -1381,7 +1379,7 @@ export class GameScene extends Phaser.Scene {
    * stream our position (only while actually running) and advance the
    * opponent's ghost — that one moves on even while we're dead or finished.
    */
-  private updateDuel(): void {
+  private updateDuel(deltaMs: number): void {
     if (!gameState.isDuel || !this.duelGhost) return;
     if (!duelClient.racing && duelClient.myTime === null) return; // pre-GO
 
@@ -1396,7 +1394,7 @@ export class GameScene extends Phaser.Scene {
     if (duelClient.opponentFinished) {
       this.duelGhost.finishAndFade();
     } else {
-      this.duelGhost.update(duelClient.frames, t - DUEL_GHOST_DELAY_SEC);
+      this.duelGhost.update(duelClient.frames, deltaMs / 1000);
     }
   }
 

@@ -358,8 +358,9 @@ function handleDuelMessage(ws, msg) {
       ws.duelRoom = room;
       room.state = "matched";
       const [host, guest] = room.players;
-      wsSend(host.ws, { type: "matched", level: room.level, opponent: { name: guest.name, char: guest.char } });
-      wsSend(guest.ws, { type: "matched", level: room.level, opponent: { name: host.name, char: host.char } });
+      // The role matters for rematches: the host also picks the next level.
+      wsSend(host.ws, { type: "matched", role: "host", level: room.level, opponent: { name: guest.name, char: guest.char } });
+      wsSend(guest.ws, { type: "matched", role: "guest", level: room.level, opponent: { name: host.name, char: host.char } });
       break;
     }
 
@@ -407,11 +408,21 @@ function handleDuelMessage(ws, msg) {
       break;
     }
 
-    // Rematch: both must agree, then the ready/GO cycle runs again.
+    // Rematch: both must agree, then the ready/GO cycle runs again. The host
+    // (players[0], stable across rematches) may pick a different level.
     case "rematch": {
       const room = ws.duelRoom;
       if (!room || room.state !== "finished" || room.players.length < 2) return;
-      playerOf(room, ws).rematch = true;
+      const me = playerOf(room, ws);
+      me.rematch = true;
+      if (
+        room.players[0] === me &&
+        Number.isInteger(msg.level) &&
+        msg.level >= 0 &&
+        msg.level < 32
+      ) {
+        room.level = msg.level;
+      }
       const opp = opponentOf(room, ws);
       if (opp && !opp.rematch) wsSend(opp.ws, { type: "rematch-requested" });
       if (room.players.every((p) => p.rematch)) {

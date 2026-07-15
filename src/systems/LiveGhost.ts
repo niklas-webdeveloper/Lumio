@@ -8,6 +8,15 @@ import type { DuelFrame } from "@/systems/DuelClient";
  */
 const SNAP_DISTANCE_PX = 220;
 
+/** Seconds the playback runs behind the newest received frame — enough to
+ *  always have a segment to interpolate across (frames arrive every 80ms)
+ *  plus headroom for internet jitter. */
+const INTERP_DELAY_SEC = 0.2;
+
+/** Playhead-vs-target gap that forces a hard resync (lag spike, tab was
+ *  hidden) instead of rubber-banding across it. */
+const RESYNC_GAP_SEC = 0.6;
+
 /**
  * The opponent in an online duel, drawn as a warm-tinted translucent ghost
  * (the cool blue is the best-run replay's color). Purely visual — no physics
@@ -20,6 +29,10 @@ export class LiveGhost {
   private readonly label: Phaser.GameObjects.Text;
   private readonly anims: { idle: string; run: string; jump: string; fall: string };
   private done = false;
+  /** Local playback clock on the opponent's frame timeline (see update). */
+  private playhead = -1;
+  /** How long playback has been starved at the buffer edge (seconds). */
+  private stalledSec = 0;
 
   constructor(
     scene: Phaser.Scene,
@@ -61,20 +74,35 @@ export class LiveGhost {
   }
 
   /**
-   * Advance to the given render time (seconds on the shared race clock —
-   * the caller passes its own clock minus a small delay buffer).
+   * Advance playback by one frame. The playback clock lives entirely on the
+   * opponent's frame timeline: it follows `newest frame - INTERP_DELAY` by
+   * gently rubber-banding toward it. Comparing the two players' race clocks
+   * (they start at each side's own GO and are never synchronized) would pin
+   * the playhead to the buffer edge — position still tracks, but every
+   * segment collapses to a point, so the pose inference reads "standing"
+   * and the ghost slides around without a run animation.
    */
-  update(frames: readonly DuelFrame[], tSec: number): void {
+  update(frames: readonly DuelFrame[], deltaSec: number): void {
     // The scene teardown after a finish can destroy the sprite while one last
     // scene update is still in flight — a destroyed sprite has no anims.
     if (this.done || !this.sprite.anims || frames.length === 0) return;
 
+    const first = frames[0];
     const latest = frames[frames.length - 1];
-    const t = Phaser.Math.Clamp(tSec, frames[0].t, latest.t);
+    const target = latest.t - INTERP_DELAY_SEC;
+    if (this.playhead < 0 || Math.abs(target - this.playhead) > RESYNC_GAP_SEC) {
+      this.playhead = target; // first frame, lag spike or hidden tab: resync
+    } else {
+      // Run at ~1×, slightly faster/slower to close the drift — smooth
+      // motion between packets without draining or overfilling the buffer.
+      const drift = target - this.playhead;
+      this.playhead += deltaSec * Phaser.Math.Clamp(1 + drift, 0.5, 1.5);
+    }
+    const t = Phaser.Math.Clamp(this.playhead, first.t, latest.t);
 
     // Find the segment containing t (buffer is short, scan from the end).
-    let a = frames[0];
-    let b = frames[0];
+    let a = first;
+    let b = first;
     for (let i = frames.length - 1; i >= 0; i--) {
       if (frames[i].t <= t) {
         a = frames[i];
@@ -94,8 +122,23 @@ export class LiveGhost {
     this.label.setPosition(x, y - 26);
 
     // Infer the pose from the sampled motion (same rule as the replay ghost).
-    const vx = teleport ? 0 : (b.x - a.x) / span;
-    const vy = teleport ? 0 : (b.y - a.y) / span;
+    // At the buffer edge (a === b) there is no motion to read: a brief packet
+    // gap keeps the current pose, but a drained buffer (the opponent is dead,
+    // respawning or paused — no frames flowing) settles into idle instead of
+    // freezing mid-run-cycle.
+    if (a === b || teleport) {
+      this.stalledSec += deltaSec;
+      if (
+        this.stalledSec > 0.3 &&
+        this.sprite.anims.currentAnim?.key !== this.anims.idle
+      ) {
+        this.sprite.anims.play(this.anims.idle, true);
+      }
+      return;
+    }
+    this.stalledSec = 0;
+    const vx = (b.x - a.x) / span;
+    const vy = (b.y - a.y) / span;
     const key =
       vy < -60 ? this.anims.jump : vy > 90 ? this.anims.fall : Math.abs(vx) > 25 ? this.anims.run : this.anims.idle;
     if (this.sprite.anims.currentAnim?.key !== key) this.sprite.anims.play(key, true);

@@ -55,6 +55,8 @@ class DuelClient {
   code: string | null = null;
   opponent: DuelOpponent | null = null;
   levelIndex = 0;
+  /** Room creator = "host": picks the level, also for rematches. */
+  role: "host" | "guest" = "host";
 
   /** Rolling buffer of received opponent frames (survives scene restarts). */
   readonly frames: DuelFrame[] = [];
@@ -186,8 +188,13 @@ class DuelClient {
     return time;
   }
 
-  requestRematch(): void {
-    this.send({ type: "rematch" });
+  /** Ask for a rematch; the host may hand over a (new) level for it. */
+  requestRematch(levelIndex?: number): void {
+    this.send(
+      levelIndex === undefined
+        ? { type: "rematch" }
+        : { type: "rematch", level: levelIndex }
+    );
   }
 
   /** Clear the per-race state right before a (re)start of the duel level. */
@@ -230,11 +237,8 @@ class DuelClient {
         const opp = (msg.opponent ?? {}) as { name?: string; char?: string };
         const char = (opp.char && opp.char in CHARACTERS ? opp.char : "lumio") as CharacterId;
         this.opponent = { name: opp.name || "Gegner", char };
-        // The level comes from the host; guard it against bad/boss indices.
-        let level = Number(msg.level);
-        if (!Number.isInteger(level) || level < 0 || level >= LEVEL_COUNT) level = 0;
-        if (LEVELS[level].distance === "boss") level = 0;
-        this.levelIndex = level;
+        this.role = msg.role === "guest" ? "guest" : "host";
+        this.levelIndex = sanitizeLevel(msg.level);
         this.phase = "matched";
         this.onMatched?.();
         break;
@@ -287,6 +291,8 @@ class DuelClient {
         break;
 
       case "rematch-start":
+        // The host may have picked a different level for this round.
+        this.levelIndex = sanitizeLevel(msg.level);
         this.phase = "matched";
         this.onRematchStart?.();
         break;
@@ -318,6 +324,13 @@ class DuelClient {
         break;
     }
   }
+}
+
+/** Clamp a wire-level index to a playable (non-boss) level. */
+function sanitizeLevel(value: unknown): number {
+  const level = Number(value);
+  if (!Number.isInteger(level) || level < 0 || level >= LEVEL_COUNT) return 0;
+  return LEVELS[level].distance === "boss" ? 0 : level;
 }
 
 export const duelClient = new DuelClient();
