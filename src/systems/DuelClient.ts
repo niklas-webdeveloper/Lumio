@@ -17,11 +17,20 @@ export interface DuelFrame {
   f: 0 | 1;
 }
 
+/** One player's run in the final standings. */
+export interface DuelRun {
+  name: string;
+  time: number;
+  deaths: number;
+  /** Did not finish — the race ended (first-to-goal or forfeit) before them. */
+  dnf?: boolean;
+}
+
 /** Final standings, as announced by the server (or by forfeit). */
 export interface DuelResult {
   winner: "you" | "opponent" | "draw";
-  you: { name: string; time: number; deaths: number };
-  opponent: { name: string; time: number; deaths: number };
+  you: DuelRun;
+  opponent: DuelRun;
   /** True when the win came from the opponent leaving, not from a finish. */
   forfeit?: boolean;
 }
@@ -307,8 +316,8 @@ class DuelClient {
         if (wasRacing || myTime !== null) {
           this.result = {
             winner: "you",
-            you: { name: saveState.currentUsername ?? "Du", time: myTime ?? 0, deaths: 0 },
-            opponent: { name: this.opponent?.name ?? "Gegner", time: 0, deaths: 0 },
+            you: { name: saveState.currentUsername ?? "Du", time: myTime ?? 0, deaths: 0, dnf: myTime === null },
+            opponent: { name: this.opponent?.name ?? "Gegner", time: 0, deaths: 0, dnf: true },
             forfeit: true,
           };
         }

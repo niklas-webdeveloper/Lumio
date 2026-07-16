@@ -303,18 +303,17 @@ function leaveDuelRoom(ws) {
   }
 }
 
-/** Both players reported their time: announce the winner to each side. */
+/** First across the line wins — announce the standings to both sides right
+ *  away (the loser's run is cut off; they never report a time → dnf). */
 function finishDuel(room) {
   room.state = "finished";
   for (const p of room.players) {
     const opp = opponentOf(room, p.ws);
-    const winner =
-      p.time < opp.time ? "you" : p.time > opp.time ? "opponent" : "draw";
     wsSend(p.ws, {
       type: "result",
-      winner,
-      you: { name: p.name, time: p.time, deaths: p.deaths },
-      opponent: { name: opp.name, time: opp.time, deaths: opp.deaths },
+      winner: p.finished ? "you" : "opponent",
+      you: { name: p.name, time: p.time, deaths: p.deaths, dnf: !p.finished },
+      opponent: { name: opp.name, time: opp.time, deaths: opp.deaths, dnf: !opp.finished },
     });
   }
 }
@@ -402,9 +401,8 @@ function handleDuelMessage(ws, msg) {
       me.finished = true;
       me.time = Math.max(0, Number(msg.time) || 0);
       me.deaths = Math.max(0, msg.deaths | 0);
-      const opp = opponentOf(room, ws);
-      if (opp) wsSend(opp.ws, { type: "opponent-finished", time: me.time });
-      if (room.players.every((p) => p.finished)) finishDuel(room);
+      // Whoever hits the goal first ends the level duel for both.
+      finishDuel(room);
       break;
     }
 

@@ -199,6 +199,22 @@ class UIManager {
     this.applyMusicVolume();
     this.assetsReady = this.preloadImages();
     window.addEventListener("keydown", (e) => this.onKey(e));
+
+    // While a text field has focus, Phaser's keyboard must be fully out of
+    // the picture: its global key captures preventDefault matching keydowns,
+    // which silently eats letters in the login/room-code inputs.
+    const isTextField = (t: EventTarget | null): boolean =>
+      t instanceof HTMLElement && (t.tagName === "INPUT" || t.tagName === "TEXTAREA");
+    document.addEventListener("focusin", (e) => {
+      if (isTextField(e.target) && this.game.input.keyboard) {
+        this.game.input.keyboard.enabled = false;
+      }
+    });
+    document.addEventListener("focusout", (e) => {
+      if (isTextField(e.target) && this.game.input.keyboard) {
+        this.game.input.keyboard.enabled = true;
+      }
+    });
   }
 
   private setContext(newCtx: KeyContext): void {
@@ -988,12 +1004,19 @@ class UIManager {
     duelClient.onOpponentFinished = (time) =>
       this.duelToast(`${duelClient.opponent?.name ?? "Gegner"} ist im Ziel — ${fmtTimePrecise(time)}!`);
 
-    duelClient.onResult = (r) => this.showDuelResult(r);
+    duelClient.onResult = (r) => {
+      // First across the line ends the duel for both. The winner's flag
+      // sequence is still playing when this arrives — let it finish; its end
+      // (showDuelFinish) picks the stored result up. The loser is cut off
+      // right away.
+      if (this.ctx === "game" && duelClient.myTime !== null) return;
+      this.showDuelResult(r);
+    };
     duelClient.onOpponentLeft = () => this.onDuelOpponentLeft();
 
     duelClient.onRematchRequested = () => {
       const hint = document.getElementById("duel-rematch-hint");
-      if (hint) hint.textContent = `${duelClient.opponent?.name ?? "Gegner"} will eine Revanche!`;
+      if (hint) hint.textContent = `${duelClient.opponent?.name ?? "Gegner"} will weiterspielen!`;
     };
 
     duelClient.onRematchStart = () => this.startDuelLevel();
@@ -1105,18 +1128,28 @@ class UIManager {
     }
     audioManager.play(result.winner === "you" ? "complete" : "death");
 
-    // Both runs, winner on top.
+    // Both runs, winner on top. A "dnf" run was cut off by the other player
+    // reaching the goal (or by a walkout) — there is no time to show.
     const you = { ...result.you, me: true, won: result.winner === "you" };
     const opp = { ...result.opponent, me: false, won: result.winner === "opponent" };
     const rows = [you, opp].sort((a, b) => Number(b.won) - Number(a.won));
     const list = el("div", "duel-rows");
     for (const r of rows) {
+      const timeLabel =
+        result.forfeit && !r.me
+          ? "aufgegeben"
+          : r.dnf
+            ? "nicht im Ziel"
+            : fmtTimePrecise(r.time);
+      // The server never learns a cut-off player's deaths — locally we know ours.
+      const deaths = r.me ? gameState.deaths : r.deaths;
+      const deathsLabel = !r.me && r.dnf ? "" : `☠ ${deaths}`;
       const rowEl = el("div", `duel-row${r.won ? " winner" : ""}${r.me ? " me" : ""}`);
       rowEl.innerHTML =
         `<span class="dr-crown">${r.won ? icoTag("crown") : ""}</span>` +
         `<span class="dr-name">${r.me ? "Du" : r.name}</span>` +
-        `<span class="dr-time">${icoTag("timer")}${result.forfeit && !r.me ? "aufgegeben" : fmtTimePrecise(r.time)}</span>` +
-        `<span class="dr-deaths">${result.forfeit && !r.me ? "" : `☠ ${r.deaths}`}</span>`;
+        `<span class="dr-time">${icoTag("timer")}${timeLabel}</span>` +
+        `<span class="dr-deaths">${deathsLabel}</span>`;
       list.appendChild(rowEl);
     }
     p.appendChild(list);
@@ -1126,15 +1159,20 @@ class UIManager {
     p.appendChild(hint);
 
     const row = el("div", "row");
-    // Rematch only makes sense while the room still exists on both ends.
+    // Playing on only makes sense while the room still exists on both ends.
     if (!result.forfeit && duelClient.phase === "finished") {
-      // The host picks the next round's level; the guest just agrees.
+      // The host picks the next round's level (the following level is
+      // preselected, so "weiter zusammen" is a single click); the guest
+      // just agrees.
       let levelSelect: HTMLSelectElement | null = null;
       if (duelClient.role === "host") {
+        const cur = duelClient.levelIndex;
+        const nextIdx =
+          cur + 1 < LEVELS.length && LEVELS[cur + 1].distance !== "boss" ? cur + 1 : cur;
         const next = el("div", "duel-next-level");
         next.append(el("span", "dnl-label", "Nächstes Level:"));
         levelSelect = el("select", "login-input duel-select duel-select-sm") as HTMLSelectElement;
-        this.fillDuelLevelSelect(levelSelect, duelClient.levelIndex);
+        this.fillDuelLevelSelect(levelSelect, nextIdx);
         next.appendChild(levelSelect);
         p.appendChild(next);
       } else {
@@ -1142,7 +1180,7 @@ class UIManager {
           el("div", "muted-text duel-next-hint", "Das nächste Level wählt der Raum-Ersteller.")
         );
       }
-      const rematch = button("REVANCHE", "orange");
+      const rematch = button("WEITER", "green", { icon: "play" });
       rematch.onclick = () => {
         duelClient.requestRematch(
           levelSelect ? parseInt(levelSelect.value, 10) || 0 : undefined

@@ -83,7 +83,11 @@ export class InputManager {
       throw new Error("Keyboard input plugin is not available.");
     }
     const KeyCodes = Phaser.Input.Keyboard.KeyCodes;
-    const add = (...codes: number[]) => codes.map((c) => kb.addKey(c, true, true));
+    // enableCapture must stay OFF for these keys: captures are global and
+    // preventDefault every keydown — including inside text inputs, where they
+    // silently swallow the letters (A/S/D/W/E/X… — half of most usernames).
+    // Only the scroll-relevant keys below get an explicit capture.
+    const add = (...codes: number[]) => codes.map((c) => kb.addKey(c, false, true));
 
     this.keys = {
       left: add(KeyCodes.LEFT, KeyCodes.A),
